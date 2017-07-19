@@ -1,0 +1,334 @@
+---
+title: "sawr11"
+author: "Robert A. Stevens"
+date: "January 4, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+library(maptools)
+library(spdep)
+library(DCluster)
+library(R2WinBUGS)
+library(rgdal)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 11 Disease Mapping
+
+## 11.1 Introduction
+
+```{r, comment=NA}
+nc_file <- system.file("shapes/sids.shp", package = "maptools")[1] 
+llCRS <- CRS("+proj=longlat +datum=NAD27")
+nc <- readShapePoly(nc_file, ID = "FIPSNO", proj4string = llCRS) 
+rn <- sapply(slot(nc, "polygons"), function(x) slot(x, "ID"))
+gal_file <- system.file("etc/weights/ncCR85.gal", package = "spdep")[1]
+ncCR85 <- read.gal(gal_file, region.id = rn)
+```
+
+## 11.2 Statistical Models
+
+```{r, comment=NA}
+nc$Observed <- nc$SID74
+nc$Population <- nc$BIR74
+r <- sum(nc$Observed)/sum(nc$Population)
+nc$Expected <- nc$Population*r
+nc$SMR <- nc$Observed/nc$Expected
+```
+
+**Figure 11.1**. Standardized mortality ratio of the North Carolina SIDS data in the period 1974–1978
+
+**Figure 11.2**. Confidence intervals of the SMR obtained with an exact formula. The black dot represents the SMR of each area. The confidence intervals shown by dashed lines are significantly higher than 1
+
+### 11.2.1 Poisson-Gamma Model
+
+```{r, comment=NA}
+eb <- empbaysmooth(nc$Observed, nc$Expected) 
+nc$EBPG <- eb$smthrr
+```
+
+**Figure 11.3**. Probability maps for the Poisson and negative binomial models
+
+### 11.2.2 Log-Normal Model
+
+```{r, comment=NA}
+ebln <- lognormalEB(nc$Observed, nc$Expected) 
+nc$EBLN <- exp(ebln$smthrr)
+```
+
+### 11.2.3 Marshall’s Global EB Estimator
+
+```{r, comment=NA}
+EBMarshall <- EBest(nc$Observed, nc$Expected) 
+nc$EBMarshall <- EBMarshall[, 2]
+```
+
+**Figure 11.4**. Comparison of different risk estimators. SMR displays the standardized mortality ratio, whilst EBPG, EBLN, and EBMarshall show different empirical Bayes estimates using the Poisson-Gamma model, the log-normal model, and Marshall’s global estimator
+
+## 11.3 Spatially Structured Statistical Models
+
+```{r, comment=NA}
+nc$EBMrshloc <- EBlocal(nc$Observed, nc$Expected, ncCR85)$est
+```
+
+**Figure 11.5**. Marshall’s EB estimator using local (top) and global (bottom) information
+
+**Figure 11.6**. Comparison of raw and EB estimators of the relative risk
+
+## 11.4 Bayesian Hierarchical Models
+
+### 11.4.1 The Poisson-Gamma Model Revisited
+
+```{r, comment=NA}
+model {
+  for(i in 1:N) {
+    observed[i] ~ dpois(mu[i])
+    mu[i] <- theta[i]*expected[i]
+    theta[i] ~ dgamma(nu, alpha)
+  }
+  nu ~ dgamma(0.01, 0.01)
+  alpha ~ dgamma(0.01, 0.01)          
+}
+```
+
+**Figure 11.7**. Code of the Poisson-Gamma model for WinBugs
+
+```{r, comment=NA}
+N <- length(nc$Observed)
+d <- list(N = N, observed = nc$Observed, expected = nc$Expected)
+pgmodelfile <- paste(getwd(), "/PG-model.txt", sep = "")
+wdir <- paste(getwd(), "/PG", sep = "") 
+if (!file.exists(wdir)) {
+  dir.create(wdir)
+}
+BugsDir <- "/home/asdar/.wine/dosdevices/c:/Program Files/WinBUGS14" 
+MCMCres <- bugs(data = d, 
+                inits = list(list(nu = 1, alpha = 1)), 
+                working.directory = wdir, 
+                parameters.to.save = c("theta", "nu", "alpha"), 
+                n.chains = 1, 
+                n.iter = 20000, 
+                n.burnin = 10000, 
+                n.thin = 10, 
+                model.file = pgmodelfile, 
+                bugs.directory = BugsDir, 
+                WINEPATH = "/usr/bin/winepath")
+```
+
+```{r, comment=NA}
+nc$PGmean <- MCMCres$mean$theta
+nc$PGmedian <- MCMCres$median$theta
+```
+
+**Figure 11.8**. 95% credible intervals of the relative risks obtained with WinBUGS using a full Bayes Poisson-Gamma model
+
+**Figure 11.9**. Comparison of empirical Bayes and full Bayes estimates of the relative risks using a Poisson-Gamma model
+
+### 11.4.2 Spatial Models
+
+```{r, comment=NA}
+nc.nb <- nb2WB(ncCR85)
+```
+
+**Figure 11.10**. Proportion of non-white births in Carolina, 1974–1978. Notice the similar pattern to the relative risk estimates
+
+```{r, comment=NA}
+model {
+  for(i in 1:N) {
+    observed[i] ~ dpois(mu[i])
+    log(theta[i]) <- alpha + beta*nonwhite[i] + u[i] + v[i] 
+    mu[i] <- expected[i]*theta[i]
+    u[i] ~ dnorm(0, precu)
+  }
+  
+  v[1:N] ~ car.normal(adj[], weights[], num[], precv)
+  
+  alpha ~ dflat()
+  beta ~ dnorm(0, 1.0E-5)
+  precu ~ dgamma(0.001, 0.001)
+  precv ~ dgamma(0.1, 0.1)
+  sigmau<-1/precu
+  sigmav<-1/precv
+}
+```
+
+**Figure 11.11**. Code of the Besag-York-Molli ́e model for WinBugs
+
+```{r, comment=NA}
+nc$nwprop <- nc$NWBIR74/nc$BIR74
+d <- list(N = N, 
+          observed = nc$Observed, 
+          expected = nc$Expected, 
+          nonwhite = nc$nwprop, 
+          adj = nc.nb$adj, 
+          weights = nc.nb$weights,
+          num = nc.nb$num)
+dwoutcov <- list(N = N, 
+                 observed = nc$Observed, 
+                 expected = nc$Expected, 
+                 adj = nc.nb$adj, 
+                 weights = nc.nb$weights, 
+                 num = nc.nb$num)
+inits <- list(u = rep(0, N), 
+              v = rep(0, N), 
+              alpha = 0, 
+              beta = 0, 
+              precu = 0.001, 
+              precv = 0.001)
+```
+
+```{r, comment=NA}
+bymmodelfile <- paste(getwd(), "/BYM-model.txt", sep = "")
+wdir <- paste(getwd(), "/BYM", sep = "") 
+if (!file.exists(wdir)) {
+ dir.create(wdir)
+}
+BugsDir <- "/home/asdar/.wine/dosdevices/c:/Program Files/WinBUGS14"
+MCMCres <- bugs(data = d, 
+                inits = list(inits), 
+                working.directory = wdir, 
+                parameters.to.save = c("theta", "alpha", "beta", "u", 
+                                       "v", "sigmau", "sigmav"), 
+                n.chains = 1, 
+                n.iter = 30000, 
+                n.burnin = 20000,
+                n.thin = 10, 
+                model.file = bymmodelfile, 
+                bugs.directory = BugsDir, 
+                WINEPATH = "/usr/bin/winepath")
+```
+
+```{r, comment=NA}
+nc$BYMmean <- MCMCres$mean$theta
+nc$BYMumean <- MCMCres$mean$u
+nc$BYMvmean <- MCMCres$mean$v
+```
+
+**Figure 11.12**. Plots of the posterior distributions of α, β, and the deviance of the model
+
+```{r, comment=NA}
+geweke.diag(ncoutput[, c("deviance", "alpha", "beta", "theta[94]")])
+```
+
+**Figure 11.13**. Standardized Mortality Ratio and posterior means of the relative risks obtained with the BYM model
+
+**Figure 11.14**. Posterior means of the non-spatial random effects (u[i]) estimated with the BYM model
+
+**Figure 11.15**. Posterior means of the spatial random effects (v[i]) estimated with the BYM model
+
+**Figure 11.16**. 95% credible intervals of the relatives risks obtained with the BYM model
+
+## 11.5 Detection of Clusters of Disease
+
+### 11.5.1 Testing the Homogeneity of the Relative Risks
+
+```{r, comment=NA}
+chtest <- achisq.test(Observed ~ offset(log(Expected)), 
+                      as(nc, "data.frame"), 
+                      "multinom", 
+                      999)
+chtest
+```
+
+```{r, comment=NA}
+1 - pchisq(chtest$t0, 100 - 1)
+```
+
+```{r, comment=NA}
+pwtest <- pottwhitt.test(Observed ~ offset(log(Expected)), 
+                         as(nc, "data.frame"), 
+                         "multinom", 
+                         999)
+```
+
+```{r, comment=NA}
+Oplus <- sum(nc$Observed)
+1 - pnorm(pwtest$t0, Oplus*(Oplus - 1), sqrt(2*100*Oplus*(Oplus - 1)))
+```
+
+### 11.5.2 Moran’s I Test of Spatial Autocorrelation
+
+```{r, comment=NA}
+col.W <- nb2listw(ncCR85, zero.policy = TRUE)
+moranI.test(Observed ~ offset(log(Expected)), 
+            as(nc, "data.frame"), 
+            "negbin", 
+            999, 
+            listw = col.W, 
+            n = length(ncCR85), 
+            S0 = Szero(col.W))
+```
+
+### 11.5.3 Tango’s Test of General Clustering
+
+```{r, comment=NA}
+data(nc.sids)
+idx <- match(nc$NAME, rownames(nc.sids))
+nc$x <- nc.sids$x[idx]
+nc$y <- nc.sids$y[idx]
+coords <- cbind(nc$x, nc$y)
+dlist <- dnearneigh(coords, 0, Inf)
+dlist <- include.self(dlist)
+dlist.d <- nbdists(dlist, coords)
+phi <- 100
+col.W.tango <- nb2listw(dlist, 
+                        glist = lapply(dlist.d, function(x, phi) {exp(-x/phi)}, phi = phi), 
+                        style = "C")
+```
+
+```{r, comment=NA}
+tango.test(Observed ~ offset(log(Expected)), 
+           as(nc, "data.frame"), 
+           "negbin", 
+           999, 
+           listw = col.W.tango, 
+           zero.policy = TRUE)
+```
+
+### 11.5.4 Detection of the Location of a Cluster
+
+### 11.5.5 Geographical Analysis Machine
+
+```{r, comment=NA}
+sidsgam <- opgam(data = as(nc, "data.frame"), radius = 30, step = 10, alpha = 0.002)
+gampoints <- SpatialPoints(sidsgam[ , c("x", "y")]*1000, 
+                           CRS("+proj=utm +zone=18 +datum=NAD27"))
+ll <- CRS("+proj=longlat +datum=NAD27")
+gampoints <- spTransform(gampoints, ll)
+gam.layout <- list("sp.points", gampoints)
+```
+
+**Figure 11.17**. Results of Openshaw’s GAM. The dots represent the centre of the clusters
+
+### 11.5.6 Kulldorff’s Statistic
+
+```{r, comment=NA}
+mle <- calculate.mle(as(nc, "data.frame"), model = "negbin") 
+thegrid <- as(nc, "data.frame")[ , c("x", "y")]
+knresults <- opgam(data = as(nc, "data.frame"), 
+                   thegrid = thegrid, 
+                   alpha = 0.05, 
+                   iscluster = kn.iscluster, 
+                   fractpop = 0.15, 
+                   R = 99, 
+                   model = "negbin", 
+                   mle = mle)
+```
+
+**Figure 11.18**. Results of Kulldorff’s test. The circles show the most likely cluster
+
+### 11.5.7 Stone’s Test for Localized Clusters
+
+```{r, comment=NA}
+stone.stat(as(nc, "data.frame"), region = which(nc$NAME == "Anson"))
+st <- stone.test(Observed ~ offset(log(Expected)), 
+                 as(nc, "data.frame"), 
+                 model = "negbin", 
+                 99, 
+                 region = which(nc$NAME == "Anson"))
+st
+```
+
+## 11.6 Other Topics in Disease Mapping

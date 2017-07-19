@@ -1,0 +1,155 @@
+---
+title: "ASDAwR2-01"
+author: "Robert A. Stevens"
+date: "July 10, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+library(maptools)
+library(maps)
+library(rgdal)
+library(sp)
+grey_gamma <- 2.2
+```
+
+*Applied Spatial Data Analysis with R* (2nd Ed.)
+
+by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 1 Hello World: Introducing Spatial Data
+
+## 1.1 Applied Spatial Data Analysis
+
+## 1.2 Why Do We Use R
+
+### 1.2.1 ... In General?
+
+### 1.2.2 ... for Spatial Data Analysis?
+
+**Figure 1.1** shows how the reception of sp classes has already influenced the landscape of contributed packages; interfacing other packages for handling and analyzing spatial data is usually simple as we see in Part II. The shaded nodes of the dependency graph are packages (co)-written and/or maintained by the authors of this book, and will be used extensively in the following chapters.
+
+maptools 
+rgdal
+splancs
+geoR
+gstat 
+spsurvey 
+trip
+aspace 
+spdep 
+spgwr 
+surveillance 
+GeoXp
+spgrass6
+GEOmap
+ecespa
+StatDA 
+geoRglm 
+simba
+DCluster 
+svcR 
+BARD
+RTOMO
+VIM
+sp
+
+**Figure 1.1**. Tree of R contributed packages on CRAN depending on or importing sp directly or indirectly; others suggest sp or use it without declaration in their package descriptions (status as of 2008-04-06)
+
+## 1.3 R and GIS 
+
+### 1.3.1 What is GIS?
+
+### 1.3.2 Service-Oriented Architectures
+
+### 1.3.3 Further Reading on GIS
+
+## 1.4 Types of Spatial Data
+
+```{r, comment=NA}
+setwd("~/GitHub/GIS")
+volc.tab <- read.table("data1964al.xy")
+volc <- SpatialPoints(volc.tab[c(2, 1)])
+llCRS <- CRS("+proj=longlat +ellps=WGS84")
+proj4string(volc) <- llCRS
+prj_new <- CRS("+proj=moll +ellps=WGS84")
+volc_proj <- spTransform(volc, prj_new)
+wrld <- map("world", interior = FALSE, xlim = c(-179, 179), ylim = c(-89, 89), plot = FALSE)
+wrld_p <- pruneMap(wrld, xlim = c(-179, 179))
+wrld_sp <- map2SpatialLines(wrld_p, proj4string = llCRS)
+wrld_proj <- spTransform(wrld_sp, prj_new)
+#save(c("wrld_proj", "wrld_sp"), file = "hsd_data/wrld.RData")
+#load("hsd_data/wrld.RData")
+wrld_grd <- gridlines(wrld_sp, easts = c(-179,seq(-150, 150, 50), 179.5), 
+                      norths = seq(-75, 75, 15), ndiscr = 100)
+wrld_grd_proj <- spTransform(wrld_grd, prj_new)
+at_sp <- gridat(wrld_sp, easts = 0, norths = seq(-75, 75, 15), offset = 0.3)
+at_proj <- spTransform(at_sp, prj_new)
+plot(wrld_proj, col = "grey50")
+plot(wrld_grd_proj, add = TRUE, lty = 3, col = "grey50")
+points(volc_proj, cex = 0.8, pch = 3, col = "blue")
+text(coordinates(at_proj), pos=at_proj$pos, offset=at_proj$offset, 
+     labels = parse(text = as.character(at_proj$labels)), cex = 0.6)
+```
+
+**Figure 1.2**. Volcanoes of the world, with last known eruption 1964 or later (+); source: National Geophysical Data Center
+
+```{r, comment=NA}
+data(volcano)
+grys <- grey.colors(8, 0.55, 0.95, grey_gamma)
+#layout(matrix(c(1, 2, 1, 3, 1, 4), 3, 2, byrow = TRUE), c(3, 1))
+# a
+image(volcano, axes = FALSE, col = grys, asp = 1, main = "a")
+contour(volcano, add = TRUE)
+box()
+# b
+image(volcano, axes = FALSE, col = 'white', asp = 1, main = "b")
+x2 <- ContourLines2SLDF(contourLines(volcano))
+plot(x2, add = TRUE)
+box()
+# c
+image(volcano, axes = FALSE, col = 'white', asp = 1, main = "c")
+plot(x2[x2$level == 140, ], add = TRUE)
+box()
+# d
+image(volcano, axes = FALSE, col = grys, asp = 1, main = "d")
+x3l1 <- coordinates(x2[x2$level == 160,])[[1]][[1]]
+x3l2 <- coordinates(x2[x2$level == 160,])[[1]][[2]]
+x3 <- SpatialPolygons(list(Polygons(list(Polygon(x3l1, hole = FALSE), 
+                                        Polygon(x3l2, hole = TRUE)), ID = c("x"))))
+plot(x3, col = '#FF8800', add = TRUE)
+box()
+```
+
+**Figure. 1.3**. Maunga Whau (Mt Eden) is one of about 50 volcanoes in the Auckland volcanic field. (a) Topographic information (altitude, m) for Maunga Whau on a 10 × 10 m2 grid, (b) contour lines, (c) 140 m contour line: a closed polygon, (d) area above 160m (hashed): a polygon with a hole
+
+## 1.5 Storage and Display
+
+## 1.6 Applied Spatial Data Analysis
+
+## 1.7 R Spatial Resources
+
+### 1.7.1 Online Resources
+
+### 1.7.2 Layout of the Book
+
+From:  http://www.asdar-book.org/data2ed.php?chapter=0
+
+# Chapter 1: Code and download bundle
+
+**R Code**
+
+```{r, comment=NA, eval=FALSE}
+source("hello_mod.R", echo = TRUE)
+```
+
+```{r, comment=NA, eval=FALSE}
+ASDAR_BOOK <- "http://www.asdar-book.org/book2ed"
+chapters <- c("hello", "cm", "vis", "die", "cm2", "std", "sppa", "geos", "lat", "dismap")
+setwd("~/GitHub/GIS") # move to download folder
+for (i in chapters) {
+  fn <- paste(i, "mod.R", sep = "_")
+  download.file(paste(ASDAR_BOOK, fn, sep = "/"), fn)
+}
+list.files()
+```

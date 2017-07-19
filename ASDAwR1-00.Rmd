@@ -1,0 +1,59 @@
+---
+title: "ASDAwR2-00"
+author: "Robert A. Stevens"
+date: "July 10, 2017"
+output: html_document
+---
+
+*Applied Spatial Data Analysis with R* (2nd Ed.)
+
+by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# Preface
+
+# Contents
+
+Preface
+
+1 Hello World: Introducing Spatial Data 
+
+Part I Handling Spatial Data in R  
+2 Classes for Spatial Data in R  
+3 Visualizing Spatial Data  
+4 Spatial Data Import and Export  
+5 Further Methods for Handling Spatial Data   
+6 Customizing Spatial Data Classes and Methods  
+
+Part II Analyzing Spatial Data  
+7 Spatial Point Pattern Analysis  
+8 Interpolation and Geostatistics  
+9 Areal Data and Spatial Autocorrelation   
+10 Modeling Areal Data  
+
+Afterword
+
+References 
+
+Subject Index
+
+Functions Index 
+
+# Part I: Handling Spatial Data in R
+
+## Handling Spatial Data
+
+# Part II: Analyzing Spatial Data
+
+## Analyzing Spatial Data
+
+**Table II.1**. Thematic cross-tabulation of chapters in this book with chapters and sections of chosen books on spatial statistics and spatial data analysis
+
+This Book                       Ch. 7   Ch. 8 Ch. 9-11  
+------------------------------- ------- ----- --------  
+Cressie (1993)                  8       2-3   6-7  
+Schabenberger and Gotway (2005) 3       4-5   1, 6  
+Waller and Gotway (2004)        5       8     6-7, 9  
+Fortin and Dale (2005)          2.1-2.2 3.5   3.1-3.4, 5  
+O’Sullivan and Unwin (2003)     4-5     8-9   7  
+
+# Afterword

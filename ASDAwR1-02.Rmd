@@ -1,0 +1,605 @@
+---
+title: "ASDAwR2-02"
+author: "Robert A. Stevens"
+date: "May 26, 2015"
+output: html_document
+---
+
+```{r, comment=NA}
+library(sp)
+library(maps)
+library(maptools)
+library(rgdal)
+library(gpclib)
+library(rgeos)
+library(raster)
+```
+
+*Applied Spatial Data Analysis with R* (2nd Ed.)
+
+by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 2 Classes for Spatial Data in R
+
+## 2.1 Introduction
+
+## 2.2 Classes and Methods in R
+
+```{r, comment=NA}
+pi*10^2
+```
+
+```{r, comment=NA}
+"*"(pi, "^"(10, 2))
+```
+
+```{r, comment=NA}
+pi*(1:10)^2
+```
+
+```{r, comment=NA}
+x <- pi*10^2 
+x
+print(x)
+print(x, digits = 12)
+```
+
+```{r, comment=NA}
+class(x)
+typeof(x)
+```
+
+```{r, comment=NA}
+class(cars)
+typeof(cars)
+names(cars)
+summary(cars)
+```
+
+```{r, comment=NA}
+str(cars)
+```
+
+```{r, comment=NA}
+class(dist ~ speed)
+```
+
+```{r, comment=NA}
+lm(dist ~ speed, data = cars)
+```
+
+```{r, comment=NA}
+cars$qspeed <- cut(cars$speed, breaks = quantile(cars$speed), include.lowest = TRUE)
+is.factor(cars$qspeed)
+par(mfrow = c(1, 2))
+plot(dist ~ speed, data = cars, main = "numerical: scatterplot")
+plot(dist ~ qspeed, data = cars, main = "factor: boxplots")
+```
+
+**Figure 2.1**. Plot methods for a formula with numerical (left panel) and factor (right panel) right-hand side variables
+
+```{r, comment=NA}
+lm(dist ~ qspeed, data = cars)
+```
+
+## 2.3 Spatial Objects
+
+```{r, comment=NA}
+getClass("Spatial")
+```
+
+```{r, comment=NA}
+getClass("CRS")
+```
+
+```{r, comment=NA}
+m <- matrix(c(0, 0, 1, 1), ncol = 2, dimnames = list(NULL, c("min", "max")))
+crs <- CRS(projargs = as.character(NA))
+crs
+S <- Spatial(bbox = m, proj4string = crs)
+S
+```
+
+```{r, comment=NA}
+# Spatial(matrix(c(350, 85, 370, 95), ncol = 2, 
+#                dimnames = list(NULL, c("min", "max"))), 
+#         proj4string = CRS("+longlat"))
+bb <- matrix(c(350, 85, 370, 95), ncol = 2, dimnames = list(NULL, c("min", "max")))
+Spatial(bb, proj4string = CRS("+proj=longlat"))
+```
+
+## 2.4 SpatialPoints
+
+```{r, comment=NA}
+setwd("~/GitHub/GIS")
+CRAN_df <- read.table("CRAN051001a.txt", header = TRUE)
+CRAN_mat <- cbind(CRAN_df$long, CRAN_df$lat)
+row.names(CRAN_mat) <- 1:nrow(CRAN_mat)
+str(CRAN_mat)
+```
+
+```{r, comment=NA}
+getClass("SpatialPoints")
+```
+
+```{r, comment=NA}
+llCRS <- CRS("+proj=longlat +ellps=WGS84")
+CRAN_sp <- SpatialPoints(CRAN_mat, proj4string = llCRS) 
+summary(CRAN_sp)
+```
+
+### 2.4.1 Methods
+
+```{r, comment=NA}
+bbox(CRAN_sp)
+```
+
+```{r, comment=NA}
+proj4string(CRAN_sp)
+proj4string(CRAN_sp) <- CRS(as.character(NA))
+proj4string(CRAN_sp)
+proj4string(CRAN_sp) <- llCRS
+```
+
+```{r, comment=NA}
+brazil <- which(CRAN_df$loc == "Brazil")
+brazil
+coordinates(CRAN_sp)[brazil, ]
+```
+
+```{r, comment=NA}
+summary(CRAN_sp[brazil, ])
+```
+
+```{r, comment=NA}
+south_of_equator <- which(coordinates(CRAN_sp)[, 2] < 0)
+summary(CRAN_sp[-south_of_equator, ])
+```
+
+### 2.4.2 Data Frames for Spatial Point Data
+
+```{r, comment=NA}
+str(row.names(CRAN_df))
+```
+
+```{r, comment=NA}
+CRAN_spdf1 <- SpatialPointsDataFrame(CRAN_mat, CRAN_df, 
+                                     proj4string = llCRS, match.ID = TRUE)
+CRAN_spdf1[4, ]
+str(CRAN_spdf1$loc)
+str(CRAN_spdf1[["loc"]])
+```
+
+```{r, comment=NA}
+s <- sample(nrow(CRAN_df))
+CRAN_spdf2 <- SpatialPointsDataFrame(CRAN_mat, CRAN_df[s, ], 
+                                     proj4string = llCRS, 
+                                     match.ID = TRUE)
+all.equal(CRAN_spdf2, CRAN_spdf1)
+CRAN_spdf2[4, ]
+```
+
+```{r, comment=NA, error=TRUE}
+CRAN_df1 <- CRAN_df
+row.names(CRAN_df1) <- sample(c(outer(letters, letters, paste, sep = "")),
+                              nrow(CRAN_df1))
+try(CRAN_spdf3 <- SpatialPointsDataFrame(CRAN_mat, CRAN_df1, proj4string = llCRS, match.ID = TRUE))
+```
+
+- **SpatialPointsDataFrame**
+    + **SpatialPoints**
+    + coords.nrs 
+    + data
+
+- **Spatial**
+    + bbox 
+    + proj4string
+
+- **SpatialPoints**
+    + coords
+    + **Spatial**
+    
+- **data.frame**
+
+**Figure 2.2**. Spatial points classes and their slots; arrows show subclass extensions
+
+```{r, comment=NA}
+getClass("SpatialPointsDataFrame")
+```
+
+```{r, comment=NA}
+names(CRAN_spdf1)
+str(model.frame(lat ~ long, data = CRAN_spdf1), give.attr = FALSE)
+```
+
+```{r, comment=NA}
+CRAN_spdf4 <- SpatialPointsDataFrame(CRAN_sp, CRAN_df)
+all.equal(CRAN_spdf4, CRAN_spdf2)
+```
+
+```{r, comment=NA}
+CRAN_df0 <- CRAN_df
+coordinates(CRAN_df0) <- CRAN_mat
+proj4string(CRAN_df0) <- llCRS
+all.equal(CRAN_df0, CRAN_spdf2)
+str(CRAN_df0, max.level = 2)
+```
+
+```{r, comment=NA}
+CRAN_df1 <- CRAN_df
+names(CRAN_df1)
+coordinates(CRAN_df1) <- c("long", "lat") 
+proj4string(CRAN_df1) <- llCRS
+str(CRAN_df1, max.level = 2)
+```
+
+```{r, comment=NA}
+setwd("~/GitHub/GIS")
+turtle_df <- read.csv("seamap105_mod.csv")
+summary(turtle_df)
+```
+
+```{r, comment=NA}
+timestamp <- as.POSIXlt(strptime(as.character(turtle_df$obs_date), 
+                                 "%m/%d/%Y %H:%M:%S"), "GMT")
+turtle_df1 <- data.frame(turtle_df, timestamp = timestamp) 
+turtle_df1$lon <- ifelse(turtle_df1$lon < 0, turtle_df1$lon + 360, turtle_df1$lon)
+turtle_sp <- turtle_df1[order(turtle_df1$timestamp), ]
+coordinates(turtle_sp) <- c("lon", "lat")
+proj4string(turtle_sp) <- CRS("+proj=longlat +ellps=WGS84")
+```
+
+```{r, comment=NA}
+gshhs.c.b <- system.file("share/gshhs_c.b", package = "maptools")
+gpclibPermit()
+pac <- Rgshhs(gshhs.c.b, level = 1, xlim = c(130, 250), ylim = c(15, 60), verbose = FALSE)
+plot(pac$SP, axes = TRUE, col = "khaki2", xaxs = "i", yaxs = "i")
+plot(turtle_sp, add = TRUE)
+m_rle <- rle(months(turtle_sp$timestamp))
+clen <- cumsum(m_rle$lengths[-length(m_rle$lengths)]) - 1
+crds <- coordinates(turtle_sp)
+text(crds[clen, ], labels = m_rle$values[-1], pos = 3, offset = 1.5, srt = 45)
+```
+
+**Figure 2.3**. Westward movements of a captive-raised adult loggerhead turtle (Caretta caretta) from 10 August 1996 to 12 August 1997 
+
+## 2.5 SpatialLines
+
+```{r, comment=NA}
+getClass("Line")
+getClass("Lines")
+```
+
+```{r, comment=NA}
+getClass("SpatialLines")
+```
+
+```{r, comment=NA}
+japan <- map("world", "japan", plot = FALSE)
+p4s <- CRS("+proj=longlat +ellps=WGS84")
+SLjapan <- map2SpatialLines(japan, proj4string = p4s) 
+str(SLjapan, max.level = 2)
+```
+
+- **SpatialLines**
+    + *lines*
+    + **Spatial**
+
+- **Lines**
+    + *Lines*
+    + ID
+
+- **Line**
+    + coords
+
+- **SpatialPolygons**
+    + *polygons*
+    + plotOrder
+    + **Spatial**
+
+- **Polygons**
+    + *Polygons*
+    + plotOrder
+    + labpt 
+    + ID
+    + area
+
+- **Polygon**
+    + labpt 
+    + area 
+    + hole
+    + ringDir 
+    + coords
+
+- **Spatial**
+    + bbox 
+    + proj4string
+
+**Figure 2.4**. SpatialLines and SpatialPolygons classes and slots; thin arrows show subclass extensions, thick arrows the inclusion of lists of objects
+
+```{r, comment=NA}
+Lines_len <- sapply(slot(SLjapan, "lines"), function(x) length(slot(x, "Lines")))
+table(Lines_len)
+```
+
+```{r, comment=NA}
+volcano_sl <- ContourLines2SLDF(contourLines(volcano))
+t(slot(volcano_sl, "data"))
+```
+
+```{r, comment=NA}
+llCRS <- CRS("+proj=longlat +ellps=WGS84")
+auck_shore <- MapGen2SL("auckland_mapgen.dat", llCRS) 
+summary(auck_shore)
+```
+
+```{r, comment=NA}
+lns <- slot(auck_shore, "lines")
+islands_auck <- sapply(lns, function(x) {
+  crds <- slot(slot(x, "Lines")[[1]], "coords")
+  identical(crds[1,], crds[nrow(crds),])
+})
+islands_sl <- auck_shore[islands_auck]
+list_of_Lines <- slot(islands_sl, "lines")
+islands_sp <- SpatialPolygons(lapply(list_of_Lines, function(x) {
+    Polygons(list(Polygon(slot(slot(x, "Lines")[[1]], "coords"))),
+      ID=slot(x, "ID"))
+  }),
+  proj4string=CRS("+proj=longlat +ellps=WGS84"))
+
+plot(auck_shore)
+legend("bottomleft", legend = "a)", bty = "n")
+plot(auck_shore)
+plot(islands_sp, add = TRUE, col = "grey")
+legend("bottomleft", legend = "b)", bty = "n")
+```
+
+**Figure 2.5**. Two maps of shorelines around Auckland: (a) line representation, (b) line representation over-plotted with islands converted to polygons and shaded. Note that Waiheke Island, the large island to the east, is not closed, and so not found as an island
+
+## 2.6 SpatialPolygons
+
+```{r, comment=NA}
+lns <- slot(auck_shore, "lines")
+table(sapply(lns, function(x) length(slot(x, "Lines"))))
+islands_auck <- sapply(lns, function(x) {
+  crds <- slot(slot(x, "Lines")[[1]], "coords") 
+  identical(crds[1, ], crds[nrow(crds), ])
+})
+table(islands_auck)
+```
+
+```{r, comment=NA}
+getClass("Polygon")
+```
+
+```{r, comment=NA}
+getClass("Polygons")
+```
+
+```{r, comment=NA}
+getClass("SpatialPolygons")
+```
+
+```{r, comment=NA}
+islands_sl <- auck_shore[islands_auck]
+list_of_Lines <- slot(islands_sl, "lines")
+islands_sp <- SpatialPolygons(
+  lapply(list_of_Lines, 
+         function(x) {
+           Polygons(list(Polygon(slot(slot(x, "Lines")[[1]], "coords"))), 
+                    ID = slot(x, "ID"))
+         }), 
+  proj4string = CRS("+proj=longlat +ellps=WGS84"))
+summary(islands_sp)
+slot(islands_sp, "plotOrder")
+order(sapply(slot(islands_sp, "polygons"), function(x) slot(x, "area")), 
+      decreasing = TRUE)
+```
+
+### 2.6.1 SpatialPolygonsDataFrame Objects
+
+```{r, comment=NA}
+state.map <- map("state", plot = FALSE, fill = TRUE)
+IDs <- sapply(strsplit(state.map$names, ":"), function(x) x[1]) 
+state.sp <- map2SpatialPolygons(state.map, IDs = IDs,
+  proj4string = CRS("+proj=longlat +ellps=WGS84"))
+```
+
+```{r, comment=NA}
+sat <- read.table("state.sat.data_mod.txt", row.names = 5, header = TRUE)
+str(sat)
+id <- match(row.names(sat), row.names(state.sp))
+row.names(sat)[is.na(id)]
+sat1 <- sat[!is.na(id), ]
+state.spdf <- SpatialPolygonsDataFrame(state.sp, sat1)
+str(slot(state.spdf, "data"))
+str(state.spdf, max.level = 2)
+```
+
+```{r, comment=NA, error=FALSE}
+rownames(sat1)[2] <- "Arizona"
+try(SpatialPolygonsDataFrame(state.sp, sat1))
+```
+
+```{r, comment=NA}
+DC <- "district of columbia"
+not_dc <- !(row.names(slot(state.spdf, "data")) == DC) 
+state.spdf1 <- state.spdf[not_dc, ]
+length(slot(state.spdf1, "polygons"))
+summary(state.spdf1)
+```
+
+### 2.6.2 Holes and Ring Direction
+
+```{r, comment=NA}
+load("high.RData")
+manitoulin_sp <- high$SP
+length(slot(manitoulin_sp, "polygons"))
+sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), function(x) slot(x, "hole"))
+sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), function(x) slot(x, "ringDir"))
+```
+
+```{r, comment=NA}
+manitoulin_sp <- createSPComment(manitoulin_sp)
+sapply(slot(manitoulin_sp, "polygons"), comment)
+
+plot(manitoulin_sp, pbg = "lightsteelblue2", col = "khaki2", usePolypath = FALSE)
+text(t(sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), 
+              function(x) slot(x, "labpt")))[-c(1,2),], 
+     label = high$polydata$level[-c(1,2)], col = "black", font = 2)
+cmt <- unlist(strsplit(sapply(slot(manitoulin_sp, "polygons"), comment), " "))
+plot(manitoulin_sp, pbg = "lightsteelblue2", col = "khaki2", usePolypath = FALSE)
+text(t(sapply(slot(slot(manitoulin_sp, "polygons")[[1]], "Polygons"), 
+              function(x) slot(x, "labpt")))[-c(1, 2), ], 
+     label = cmt[-c(1, 2)], col = "black", font = 2)
+```
+
+**Figure 2.6**. The northern, Canadian shore of Lake Huron, including Manitoulin Island and lakes on the island; islands (light grey) and lakes on islands (dark grey) are marked with their GSHHS levels
+
+## 2.7 SpatialGrid and SpatialPixel Objects
+
+```{r, comment=NA}
+getClass("GridTopology")
+```
+
+```{r, comment=NA}
+bb <- bbox(manitoulin_sp)
+bb
+cs <- c(0.01, 0.01)
+cc <- bb[, 1] + (cs/2)
+cd <- ceiling(diff(t(bb))/cs)
+manitoulin_grd <- GridTopology(cellcentre.offset = cc, 
+                               cellsize = cs, 
+                               cells.dim = cd)
+manitoulin_grd
+```
+
+```{r, comment=NA}
+getClass("SpatialGrid")
+```
+
+```{r, comment=NA}
+p4s <- CRS(proj4string(manitoulin_sp))
+manitoulin_SG <- SpatialGrid(manitoulin_grd, proj4string = p4s) 
+summary(manitoulin_SG)
+```
+
+```{r, comment=NA, error=TRUE}
+#auck_el1 <- readGDAL("70042108.tif")
+load("auck_el1.RData")
+is.na(auck_el1$band1) <- auck_el1$band1 <= 0
+load("auck_gshhs.RData")
+
+class(auck_el1)
+slot(auck_el1, "grid")
+slot(auck_el1, "bbox")
+object.size(auck_el1)
+object.size(slot(auck_el1, "data"))
+```
+
+```{r, comment=NA}
+r <- raster("70042108.tif")
+
+class(r)
+inMemory(r)
+object.size(r)
+cellStats(r, max)
+cellStats(r, min)
+inMemory(r)
+
+out <- raster(r)
+bs <- blockSize(out)
+out <- writeStart(out, filename = tempfile(), overwrite = TRUE)
+for (i in 1:bs$n) {
+    v <- getValues(r, row = bs$row[i], nrows = bs$nrows[i])
+    v[v <= 0] <- NA
+    writeValues(out, v, bs$row[i])
+}
+out <- writeStop(out)
+cellStats(out, min)
+cellStats(out, max)
+inMemory(out)
+
+plot(out, col = terrain.colors(100))
+plot(auck_gshhs, add = TRUE)
+```
+
+**Figure 2.7**. SRTM elevation data in meters for the Auckland isthmus over-plotted with an excerpt from the GSHHS full resolution shoreline, including two lakes – there are detailed differences stemming from the very different technologies underlying the two data sources. A transect is marked for later use
+
+```{r, comment=NA}
+r1 <- as(out, "SpatialGridDataFrame")
+summary(r1)
+r2 <- as(r1, "RasterLayer")
+summary(r2)
+```
+
+```{r, comment=NA}
+is.na(auck_el1$band1) <- auck_el1$band1 <= 0
+summary(auck_el1$band1)
+```
+
+- **SpatialGridDataFrame**
+    + **SpatialGrid**
+    + **data**
+
+- **SpatialGrid**
+    + **grid**
+    + grid.index
+    + **SpatialPoints**
+
+- **GridTopology**
+    + cellcentre.offset 
+    + cellsize 
+    + cells.dim
+    
+- **SpatialPixelsDataFrame**
+    + **SpatialPixels**
+    + **data**
+
+- **SpatialPixels**
+    + **grid**
+    + grid.index
+    + **SpatialPoints**
+
+- **Spatial**
+    + bbox 
+    + proj4string
+
+- **SpatialPoints**
+    + coords
+    + **Spatial**
+
+- **data.frame**
+
+**Figure 2.8**. SpatialGrid and SpatialPixel classes and their slots; arrows show subclass extensions
+
+```{r, comment=NA}
+#auck_el2 <- as(auck_el1, "SpatialPixelsDataFrame") 
+load("auck_el2.RData")
+
+object.size(auck_el2)
+object.size(slot(auck_el2, "grid.index"))
+object.size(slot(auck_el2, "coords"))
+sum(is.na(auck_el1$band1)) + nrow(slot(auck_el2, "coords"))
+prod(slot(slot(auck_el2, "grid"), "cells.dim"))
+```
+
+```{r, comment=NA}
+auck_el_500 <- auck_el2[auck_el2$band1 > 500, ]
+summary(auck_el_500)
+object.size(auck_el_500)
+```
+
+```{r, comment=NA}
+data(meuse.grid)
+mg_SP <- SpatialPoints(cbind(meuse.grid$x, meuse.grid$y)) 
+summary(mg_SP)
+mg_SPix0 <- SpatialPixels(mg_SP)
+summary(mg_SPix0)
+prod(slot(slot(mg_SPix0, "grid"), "cells.dim"))
+```
+
+```{r, comment=NA}
+mg_SPix1 <- as(mg_SP, "SpatialPixels")
+summary(mg_SPix1)
+```

@@ -1,0 +1,426 @@
+---
+title: "sawr05"
+author: "Robert A. Stevens"
+date: "December 26, 2016"
+output: html_document
+---
+
+```{r, comment=NA}
+library(rgdal)
+library(maptools)
+library(lattice)
+library(rgeos)
+library(rgdal)
+#library(testthat)
+library(RColorBrewer)
+#library(spgrass6)
+library(spdep)
+library(raster)
+setwd("~/GitHub/GIS")
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 5 Further Methods for Handling Spatial Data
+
+## 5.1 Support
+
+```{r, comment=NA}
+x <- 10*1:nrow(volcano)
+y <- 10*1:ncol(volcano)
+grys <- terrain.colors(11)
+image(y, x, t(volcano)[ncol(volcano):1, ], breaks = seq(90, 200, 10), 
+      col = grys, asp = 1, axes = FALSE)
+contour(y, x, t(volcano)[ncol(volcano):1, ], levels = seq(90, 200, 10), 
+        asp = 1, axes = FALSE)
+```
+
+**Figure 5.1**. Image plot and contour plot representations of Maunga Whau from the standard R volcano data set, for the same elevation class intervals (rotated to put north at the top)
+
+## 5.2 Overlay
+
+```{r, comment=NA}
+#summary(transect_sp)
+#transect_el1 <- overlay(auck_el1, transect_sp) 
+#summary(transect_el1)
+```
+
+**Figure 5.2**. Elevation values along a west–east transect, and a plot of the empirical cumulative distribution function values for elevation on the transect
+
+## 5.3 Spatial Sampling
+
+```{r, comment=NA}
+# set.seed(9876)
+# polygon_random <- spsample(auck_gshhs, 1000, type = "random") 
+# polygon_random_el1 <- overlay(auck_el1, polygon_random)
+# grid_random <- spsample(auck_el2, 1000, type = "random")
+# grid_random_el1 <- overlay(auck_el1, grid_random)
+# grid_regular <- spsample(auck_el2, 1000, type = "regular")
+# grid_regular_el1 <- overlay(auck_el1, grid_regular)
+```
+
+**Figure 5.3**. Use of the spsample method: three sets of SpatialPoints objects and empirical cumulative distribution functions for elevation values for the sample points over-plotted on the transect values shown in **Figure 5.2**
+
+## 5.4 Checking Topologies
+
+**Figure 5.4**. The three states plotted from input spatial objects using different grey colors for county boundaries
+
+```{r, comment=NA}
+# nc90 <- readOGR(".", "co37_d90")
+# proj4string(nc90) <- CRS("+proj=longlat +datum=NAD27") 
+# sc90 <- readOGR(".", "co45_d90")
+# proj4string(sc90) <- CRS("+proj=longlat +datum=NAD27") 
+# va90 <- readOGR(".", "co51_d90")
+# proj4string(va90) <- CRS("+proj=longlat +datum=NAD27")
+```
+
+```{r, comment=NA}
+# names(sc90)
+# sc90a <-spChFIDs(sc90, paste(sc90$ST, sc90$CO, sep = ""))
+# sc90a <- sc90a[, -(1:4)]
+# names(sc90a)
+```
+
+### 5.4.1 Dissolving Polygons
+
+```{r, comment=NA}
+# names(nc90)
+# nc90a <- spChFIDs(nc90, paste(nc90$ST, nc90$CO, sep = ""))
+```
+
+```{r, comment=NA}
+# table(table(paste(nc90$ST, nc90$CO, sep = "")))
+```
+
+```{r, comment=NA}
+# nc90a <- unionSpatialPolygons(nc90, IDs = paste(nc90$ST, nc90$CO, sep = ""))
+```
+
+```{r, comment=NA}
+# nc90_df <- as(nc90, "data.frame")[!duplicated(nc90$CO), -(1:4)]
+# row.names(nc90_df) <- paste(nc90_df$ST, nc90_df$CO, sep = "") 
+# nc90b <- SpatialPolygonsDataFrame(nc90a, nc90_df)
+```
+
+### 5.4.2 Checking Hole Status
+
+```{r, comment=NA}
+# va90a <- spChFIDs(va90, paste(va90$ST, va90$CO, sep = "")) 
+# va90a <- va90a[, -(1:4)]
+# va90_pl <- slot(va90a, "polygons")
+# va90_pla <- lapply(va90_pl, checkPolygonsHoles)
+# p4sva <- CRS(proj4string(va90a))
+# vaSP <- SpatialPolygons(va90_pla, proj4string = p4sva) 
+# va90b <- SpatialPolygonsDataFrame(vaSP, data = as(va90a, "data.frame"))
+```
+
+## 5.5 Combining Spatial Data
+
+### 5.5.1 Combining Positional Data
+
+```{r, comment=NA}
+# nc_sc_va90 <- spRbind(spRbind(nc90b, sc90a), va90b)
+# FIPS <- sapply(slot(nc_sc_va90, "polygons"), function(x) slot(x, "ID"))
+# str(FIPS)
+# length(slot(nc_sc_va90, "polygons"))
+```
+
+### 5.5.2 Combining Attribute Data
+
+```{r, comment=NA}
+t1 <- read.fwf("90mfips.txt", 
+               skip = 21, 
+               widths = c(4, 4, 4, 4, 2, 6, 2, 3, 3, 1, 7, 5, 3, 51), 
+               colClasses = "character")
+t2 <- t1[1:2004, c(1, 7, 8, 14)]
+t3 <- t2[complete.cases(t2), ]
+cnty1 <- t3[t3$V7 != "  ", ]
+ma1 <- t3[t3$V7 == "  ", c(1, 4)]
+cnty2 <- cnty1[which(!is.na(match(cnty1$V7, c("37", "45", "51")))), ]
+cnty2$FIPS <- paste(cnty2$V7, cnty2$V8, sep = "")
+```
+
+```{r, comment=NA}
+# MA_FIPS <- cnty2$V1[match(FIPS, cnty2$FIPS)]
+# MA <- ma1$V14[match(MA_FIPS, ma1$V1)]
+# MA_df <- data.frame(MA_FIPS = MA_FIPS, MA = MA, row.names = FIPS)
+# nc_sc_va90a <- spCbind(nc_sc_va90, MA_df)
+# ncscva_MA <- unionSpatialPolygons(nc_sc_va90a, nc_sc_va90a$MA_FIPS)
+```
+
+**Figure 5.5**. The three states with county boundaries plotted in grey, and Metropolitan area boundaries plotted in black; Metro area standard IDs are shown
+
+```{r, comment=NA}
+# np <- sapply(slot(ncscva_MA, "polygons"), function(x) length(slot(x, "Polygons")))
+# table(np)
+# MA_fips <- sapply(slot(ncscva_MA, "polygons"), function(x) slot(x, "ID"))
+# MA_name <- ma1$V14[match(MA_fips, ma1$V1)]
+# data.frame(MA_fips, MA_name)[np > 1, ]
+```
+
+## 5.6 Auxiliary Functions
+
+```{r, comment=NA}
+hels <- matrix(c(24.97, 60.17), nrow = 1)
+p4s <- CRS("+proj=longlat +datum=WGS84")
+Hels <- SpatialPoints(hels, proj4string=p4s)
+d041224 <- as.POSIXct("2004-12-24", tz = "EET")
+sunriset(Hels, d041224, direction = "sunrise", POSIXct.out = TRUE)
+```
+
+```{r, comment=NA}
+# code from "cm2_mod.R" but not in book
+###################################################
+getScale()
+###################################################
+#set_do_poly_check(FALSE)
+#test_package("rgeos")
+#set_do_poly_check(TRUE)
+###################################################
+set_ReplCRS_warn(FALSE)
+###################################################
+olinda <- readOGR(".", "olinda1", integer64 = "allow.loss")
+proj4string(olinda) <- CRS("+init=epsg:4674")
+olinda_utm <- spTransform(olinda, CRS("+init=epsg:31985"))
+###################################################
+set_ReplCRS_warn(TRUE)
+###################################################
+Area <- gArea(olinda_utm, byid = TRUE)
+olinda_utm$area <- sapply(slot(olinda_utm, "polygons"), slot, "area")
+all.equal(unname(Area), olinda_utm$area)
+olinda_utm$dens <- olinda_utm$V014/(olinda_utm$area/1000000)
+###################################################
+spplot(olinda_utm, "dens", at = c(0, 8000, 12000, 15000, 20000, 60000), 
+       col.regions = brewer.pal(6, "YlOrBr")[-1], col = "grey30", lwd = 0.5,
+       colorkey = list(space = "right", labels = list(cex = 0.7), width = 1))
+###################################################
+bounds <- gUnaryUnion(olinda_utm)
+gArea(olinda_utm)
+sapply(slot(slot(bounds, "polygons")[[1]], "Polygons"), slot, "area")
+###################################################
+pols_overlap <- gOverlaps(olinda_utm, byid = TRUE)
+any(pols_overlap)
+###################################################
+oScale <- getScale()
+setScale(1e+4)
+pols_overlap <- gOverlaps(olinda_utm, byid = TRUE)
+any(pols_overlap)
+bounds <- gUnaryUnion(olinda_utm)
+setScale(oScale)
+sapply(slot(slot(bounds, "polygons")[[1]], "Polygons"), slot, "area")
+###################################################
+set_ReplCRS_warn(FALSE)
+###################################################
+pan <- readGDAL("L7_ETM8s.tif")
+proj4string(pan) <- CRS(proj4string(bounds))
+TM <- readGDAL("L7_ETMs.tif")
+proj4string(TM) <- CRS(proj4string(bounds))
+names(TM) <- c("TM1", "TM2", "TM3", "TM4", "TM5", "TM7")
+dem <- readGDAL("olinda_dem_utm25s.tif")
+proj4string(dem) <- CRS(proj4string(bounds))
+is.na(dem$band1) <- dem$band1 <= 0
+###################################################
+set_ReplCRS_warn(TRUE)
+###################################################
+#myGRASS <- "/home/rsb/topics/grass/g642/grass-6.4.2"
+#loc <- initGRASS(myGRASS, tempdir(), SG=dem, override=TRUE)
+#execGRASS("g.mapset", mapset="PERMANENT")
+#execGRASS("g.proj", flag="c", proj4=proj4string(bounds))
+#execGRASS("g.mapset", mapset=loc$MAPSET)
+#execGRASS("g.region", flag="d")
+###################################################
+#writeRAST6(dem, "dem", flags="o")
+#execGRASS("g.region", rast="dem")
+#respan <- gridparameters(pan)$cellsize
+#execGRASS("r.resamp.rst", input="dem", ew_res=respan[1], ns_res=respan[2], elev="DEM_resamp")
+#execGRASS("g.region", rast="DEM_resamp")
+###################################################
+#execGRASS("r.watershed", elevation="DEM_resamp", stream="stream", threshold=1000L, convergence=5L, memory=300L)
+#execGRASS("r.thin", input="stream", output="stream1", iterations=200L)
+#execGRASS("r.to.vect", input="stream1", output="stream", feature="line")
+###################################################
+set_ReplCRS_warn(FALSE)
+###################################################
+#stream_utm <- readVECT6("stream")
+###################################################
+stream_utm <- readOGR(".", "stream")
+###################################################
+proj4string(stream_utm) <- CRS("+init=epsg:31985")
+###################################################
+set_ReplCRS_warn(TRUE)
+###################################################
+nrow(stream_utm)
+summary(gLength(stream_utm, byid = TRUE))
+###################################################
+t0 <- gTouches(stream_utm, byid = TRUE)
+any(t0)
+###################################################
+lw <- mat2listw(t0)
+nComp <- n.comp.nb(lw$neighbours)
+nComp$nc
+###################################################
+lns <- gLineMerge(stream_utm, id = as.character(nComp$comp.id))
+length(row.names(lns))
+summary(gLength(lns, byid = TRUE))
+all.equal(SpatialLinesLengths(lns), unname(gLength(lns, byid = TRUE)))
+###################################################
+GI <- gIntersection(lns, olinda_utm, byid = TRUE)
+class(GI)
+length(row.names(GI))
+###################################################
+res <- numeric(nrow(olinda_utm))
+head(row.names(GI))
+range(as.integer(row.names(olinda_utm)))
+rnGI <- as.integer(sapply(strsplit(row.names(GI), " "), "[", 2)) + 1
+length(rnGI) == length(unique(rnGI))
+lens <- gLength(GI, byid = TRUE)
+tlens <- tapply(lens, rnGI, sum)
+res[as.integer(names(tlens))] <- unname(tlens)
+olinda_utm$stream_len <- res
+summary(olinda_utm$stream_len)
+###################################################
+tree <- gBinarySTRtreeQuery(lns, olinda_utm)
+table(sapply(tree, length))
+###################################################
+res1 <- numeric(length = length(tree))
+for(i in seq(along=res1)) {
+  if(!is.null(tree[[i]])) {
+    gi <- gIntersection(lns[tree[[i]]], olinda_utm[i, ])
+    res1[i] <- ifelse(is.null(gi), 0, gLength(gi))
+  }
+}
+all.equal(olinda_utm$stream_len, res1)
+###################################################
+buf50m <- gBuffer(lns, width = 50)
+length(slot(buf50m, "polygons"))
+###################################################
+GI1 <- gIntersection(buf50m, olinda_utm, byid = TRUE)
+res <- numeric(length(slot(olinda_utm, "polygons")))
+head(row.names(GI1))
+rnGI <- as.integer(sapply(strsplit(row.names(GI1), " "), "[", 2)) + 1
+length(rnGI) == length(unique(rnGI))
+res[rnGI] <- gArea(GI1, byid = TRUE)
+olinda_utm$buf_area <- res
+olinda_utm$prop_50m <- olinda_utm$buf_area/olinda_utm$area
+###################################################
+stream_inside <- gIntersection(lns, bounds)
+###################################################
+bl <- brewer.pal(5, "Blues")
+spplot(olinda_utm, "prop_50m", col.regions = colorRampPalette(bl)(20), 
+       col = "transparent", sp.layout = list("sp.lines", stream_inside),
+       colorkey = list(space = "right", labels = list(cex = 0.7), width = 1))
+###################################################
+data(meuse)
+coordinates(meuse) = ~x + y
+data(meuse.grid)
+gridded(meuse.grid) = ~x + y
+###################################################
+sel = over(meuse, as(meuse.grid, "SpatialPixels"))
+meuse = meuse[!is.na(sel), ]
+###################################################
+meuse = meuse[meuse.grid, ]
+###################################################
+gt <- GridTopology(c(178480, 329640), c(400,400), c(8,11))
+coarseGrid <- SpatialGrid(gt, proj4string(meuse))
+agg <- aggregate(meuse[c("zinc", "lead")], coarseGrid, max)
+###################################################
+pts <- list("sp.points", meuse, col = 'black')
+pal <- function(n = 9) brewer.pal(n, "Reds")
+spplot(agg, sp.layout = pts, col.regions = pal, cuts = 8)
+###################################################
+TM$ndvi <- (TM$TM4 - TM$TM3)/(TM$TM4 + TM$TM3)
+###################################################
+TM0 <- as(TM, "SpatialPixelsDataFrame")
+TM1 <- TM0[bounds, ]
+PC <- prcomp(as(TM1, "data.frame")[,1:6], center = TRUE, scale. = TRUE)
+PCout <- predict(PC)
+TM1$PC1 <- PCout[ , 1]
+TM1$PC2 <- PCout[ , 2]
+TM1$PC3 <- PCout[ , 3]
+###################################################
+spplot(TM1, c("PC1", "PC2"), at = seq(-17, 17, length.out = 21),
+       col.regions = rev(colorRampPalette(brewer.pal(10, "PiYG"))(20)), 
+       sp.layout = list("sp.lines", as(olinda_utm, "SpatialLines"), lwd = 0.5),
+       colorkey = list(space = "right", labels = list(cex = 0.8), width = 1))
+###################################################
+o_mean <- over(olinda_utm, TM1[ ,c("PC1", "PC2", "PC3")])
+str(o_mean)
+row.names(o_mean) <- row.names(olinda_utm)
+olinda_utmA <- spCbind(olinda_utm, o_mean)
+###################################################
+o_median <- over(olinda_utm, TM1[ ,c("PC1", "PC2", "PC3")], fn = median)
+row.names(o_median) <- row.names(olinda_utmA)
+names(o_median) <- paste(names(o_median), "med", sep = "_")
+olinda_utmB <- spCbind(olinda_utmA, o_median)
+TM1$count <- 1
+o_count <- over(olinda_utm, TM1[ ,"count"], fn = sum)
+olinda_utmB$count <- o_count$count
+###################################################
+summary(olinda_utmB[ , grep("^PC|count", names(olinda_utmB))])
+###################################################
+o_dem_median <- over(olinda_utm, dem, fn = median)
+olinda_utmB$dem_median <- o_dem_median$band1
+summary(olinda_utmB$dem_median)
+o_ndvi_median <- over(olinda_utm, TM1["ndvi"], fn = median)
+olinda_utmB$ndvi_median <- o_ndvi_median$ndvi
+###################################################
+TMrs <- stack(TM1)
+e1 <- extract(TMrs, as(olinda_utm, "SpatialPolygons"), small = FALSE)
+###################################################
+e2 <- extract(raster(dem), as(olinda_utm, "SpatialPolygons"), small = FALSE)
+###################################################
+table(sapply(e2, is.null))
+###################################################
+all.equal(sapply(e1, nrow), olinda_utmB$count)
+all.equal(sapply(e1, function(x) median(x[ , "ndvi"])), olinda_utmB$ndvi_median)
+med <- sapply(e2, function(x) ifelse(is.null(x), as.numeric(NA), median(x, na.rm = TRUE)))
+all.equal(med, olinda_utmB$dem_median)
+###################################################
+#o <- over(dem, bounds)
+#dem$band1 <- dem$band1*o
+set.seed(9876)
+p_r <- spsample(bounds, 1000, type = "random")
+length(p_r)
+dem <- dem[bounds, ]
+dem_sp <- as(dem, "SpatialPixelsDataFrame")
+g_r <- spsample(dem_sp, 1000, type = "random")
+length(g_r)
+g_rg <- spsample(dem_sp, 1000, type = "regular")
+length(g_rg)
+###################################################
+p_r_dem <- over(p_r, dem)
+g_r_dem <- over(g_r, dem)
+g_rg_dem <- over(g_rg, dem)
+###################################################
+plot(bounds)
+plot(p_r, add = TRUE, cex = 0.15)
+title(main = "polygon_random")
+plot(g_r, cex = 0.15)
+title(main = "grid_random")
+plot(g_rg, cex = 0.15)
+title(main = "grid_regular")
+plot(ecdf(p_r_dem$band1), verticals = TRUE, do.p = FALSE, ann = FALSE,
+     col.hor = "green", col.vert = "green")
+title(main = "ECDF")
+plot(ecdf(g_r_dem$band1), verticals = TRUE, do.p = FALSE,
+     col.hor = "blue", col.vert = "blue", add = TRUE)
+plot(ecdf(g_rg_dem$band1), verticals = TRUE, do.p = FALSE, 
+     col.hor = "red", col.vert = "red", add = TRUE)
+abline(h = c(0.25, 0.5, 0.75), lty = 2, col = "grey")
+legend("bottomright", c("polygon random", "grid random", "grid regular"),
+       col = c("green", "red", "blue"), lty = 1, bty = "n")
+###################################################
+tab <- rbind(
+  polygon_random = c(fivenum(p_r_dem$band1), nrow(p_r_dem)),
+  grid_random = c(fivenum(g_r_dem$band1), nrow(g_r_dem)),
+  grid_regular = c(fivenum(g_rg_dem$band1), nrow(g_rg_dem)))
+colnames(tab) <- c("minimum", "lower-hinge", "median", "upper-hinge", "maximum", "n")
+tab
+###################################################
+o_sp <- as(olinda_utm, "SpatialPolygons")
+whichPoly <- over(p_r, o_sp)
+whichPoly1 <- gContains(o_sp, p_r, byid = TRUE)
+whichPoly1a <- apply(unname(whichPoly1), 1, which)
+table(sapply(whichPoly1a, length))
+all.equal(whichPoly, whichPoly1a)
+```

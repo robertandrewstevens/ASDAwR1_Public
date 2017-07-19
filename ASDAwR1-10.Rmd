@@ -1,0 +1,251 @@
+---
+title: "sawr10"
+author: "Robert A. Stevens"
+date: "January 4, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+library(spdep)
+library(nlme)
+library(lmtest)
+library(sandwich)
+library(mgcv)
+library(MASS)
+library(spgwr)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 10 Modeling Areal Data
+
+## 10.1 Introduction
+
+## 10.2 Spatial Statistics Approaches
+
+```{r, comment=NA}
+nylm <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8) 
+summary(nylm)
+NY8$lmresid <- residuals(nylm)
+```
+
+**Figure 10.1**. Residuals from the linear model of transformed incidence proportions; TCE site locations shown for comparative purposes
+
+```{r, comment=NA}
+NYlistw <- nb2listw(NY_nb, style = "B") 
+lm.morantest(nylm, NYlistw)
+```
+
+### 10.2.1 Simultaneous Autoregressive Models
+
+```{r, comment=NA}
+nysar <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistw)
+summary(nysar)
+```
+
+```{r, comment=NA}
+nylmw <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, weights = POP8)
+summary(nylmw)
+NY8$lmwresid <- residuals(nylmw)
+```
+
+```{r, comment=NA}
+lm.morantest(nylmw, NYlistw)
+```
+
+**Figure 10.2**. Residuals from the weighted linear model of transformed incidence proportions; TCE site locations shown for comparative purposes
+
+```{r, comment=NA}
+nysarw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistw, weights = POP8)
+summary(nysarw)
+```
+
+### 10.2.2 Conditional Autoregressive Models
+
+```{r, comment=NA}
+nycar <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, family = "CAR", listw = NYlistw)
+summary(nycar)
+```
+
+```{r, comment=NA}
+nycarw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                   data = NY8, family = "CAR", listw = NYlistw, weights = POP8) 
+summary(nycarw)
+```
+
+### 10.2.3 Fitting Spatial Regression Models
+
+```{r, comment=NA}
+nysarwM <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                    data = NY8, family = "SAR", listw = NYlistw, weights = POP8, 
+                    method = "Matrix")
+summary(nysarwM)
+```
+
+**Figure 10.3**. Log likelihood values for a range of values of λ, weighted and unweighted SAR models; fitted spatial coefficient values and maxima shown
+
+```{r, comment=NA}
+1/range(eigenw(NYlistw))
+nysar_ll  <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                      data = NY8, family = "SAR", listw = NYlistw, llprof = 100)
+nysarw_ll <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                      data = NY8, family = "SAR", listw = NYlistw, llprof = 100,
+                      weights = POP8)
+```
+
+```{r, comment=NA}
+nysmaw <- spautolm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                   data = NY8, family = "SMA", listw = NYlistw, weights = POP8) 
+summary(nysmaw)
+```
+
+## 10.3 Mixed-Effects Models
+
+```{r, comment=NA}
+NY8$x <- coordinates(NY8)[ , 1]/1000
+NY8$y <- coordinates(NY8)[ , 2]/1000
+sp1 <- corSpatial(1, form = ~x + y, type = "gaussian") 
+scor <- Initialize(sp1, as(NY8, "data.frame")[ , c("x", "y")], nugget = FALSE)
+```
+
+```{r, comment=NA}
+spmodel <- lme(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+               random = ~1 | AREAKEY, 
+               data = as(NY8, "data.frame"), correlation = scor, method = "ML")
+summary(spmodel)
+```
+
+## 10.4 Spatial Econometrics Approaches
+
+```{r, comment=NA}
+bptest(nylm)
+```
+
+```{r, comment=NA}
+coeftest(nylm)
+coeftest(nylm, vcov = vcovHC(nylm, type = "HC4"))
+```
+
+```{r, comment=NA}
+NYlistwW <- nb2listw(NY_nb, style = "W")
+res <- lm.LMtests(nylm, listw = NYlistwW, test = "all")
+tres <- t(sapply(res, function(x) c(x$statistic, x$parameter, x$p.value)))
+colnames(tres) <- c("Statistic", "df", "p-value") 
+printCoefmat(tres)
+```
+
+```{r, comment=NA}
+nylag <- lagsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nylag)
+bptest.sarlm(nylag)
+```
+
+```{r, comment=NA}
+nymix <- lagsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, listw = NYlistwW, type = "mixed")
+nymix
+anova(nymix, nylag)
+```
+
+```{r, comment=NA}
+nyerr <- errorsarlm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nyerr)
+```
+
+```{r, comment=NA}
+nystsls <- stsls(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, data = NY8, listw = NYlistwW)
+summary(nystsls)
+```
+
+```{r, comment=NA}
+nystslsR <- stsls(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                  data = NY8, listw = NYlistwW, robust = TRUE)
+summary(nystslsR)
+```
+
+```{r, comment=NA}
+nyGMerr <- GMerrorsar(Z ~ PEXPOSURE, data = NY8, listw = NYlistwW)
+summary(nyGMerr)
+```
+
+## 10.5 Other Methods
+
+### 10.5.1 GAM, GEE, GLMM
+
+```{r, comment=NA}
+nyGAM1 <- gam(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + s(x, y), weights = POP8, data = NY8)
+anova(nylmw, nyGAM1, test = "Chisq")
+```
+
+```{r, comment=NA}
+nyGLMp <- glm(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+              data = NY8, family = "poisson")
+summary(nyGLMp)
+```
+
+```{r, comment=NA}
+NY8$lmpresid <- residuals(nyGLMp, type = "deviance") 
+lm.morantest(nyGLMp, listw = NYlistwW)
+```
+
+**Figure 10.5**. Residuals from the Poisson regression model; TCE site locations shown for comparative purposes
+
+```{r, comment=NA}
+nyGAMp <- gam(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)) + s(x, y), 
+              data = NY8, family = "poisson") 
+summary(nyGAMp)
+anova(nyGLMp, nyGAMp, test = "Chisq")
+```
+
+```{r, comment=NA}
+attach(as(NY8, "data.frame"))
+nyGLMMp <- glmmPQL(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+                   data = NY8, family = poisson, random = ~1 | AREAKEY, correlation = scor)
+detach("as(NY8, \"data.frame\")")
+summary(nyGLMMp)
+```
+
+### 10.5.2 Moran Eigenvectors
+
+```{r, comment=NA}
+nySFE <- SpatialFiltering(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+                          data = NY8, nb = NY_nb, style = "W", verbose = FALSE)
+nylmSFE <- lm(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + fitted(nySFE), data = NY8)
+summary(nylmSFE)
+anova(nylm, nylmSFE)
+```
+
+```{r, comment=NA}
+nyME <- ME(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+           data = NY8, offset = log(POP8), family = "poisson", listw = NYlistwW, alpha = 0.5)
+nyME
+nyglmME <- glm(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)) + fitted(nyME),
+               data = NY8, family = "poisson")
+summary(nyglmME)
+anova(nyGLMp, nyglmME, test = "Chisq")
+```
+
+**Figure 10.6**. Maps of the two eigenvalues selected for inclusion in the Poisson regression model
+
+### 10.5.3 Geographically Weighted Regression
+
+```{r, comment=NA}
+bwG <- gwr.sel(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+               data = NY8, gweight = gwr.Gauss, verbose = FALSE)
+gwrG <- gwr(Z ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME, 
+            data = NY8, bandwidth = bwG, gweight = gwr.Gauss, hatmatrix = TRUE)
+gwrG
+```
+
+```{r, comment=NA}
+gbwG <- ggwr.sel(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+                 data = NY8, family = "poisson", gweight = gwr.Gauss, verbose = FALSE)
+ggwrG <- ggwr(Cases ~ PEXPOSURE + PCTAGE65P + PCTOWNHOME + offset(log(POP8)), 
+              data = NY8, family = "poisson", bandwidth = gbwG, gweight = gwr.Gauss)
+ggwrG
+```
+
+**Figure 10.7**. GWR local coefficient estimates for the exposure to TCE site covariate
+
+**Figure 10.8**. Pairs plots of GWR local coefficient estimates showing the effects of GWR collinearity forcing

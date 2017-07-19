@@ -1,0 +1,363 @@
+---
+title: "sawr09"
+author: "Robert A. Stevens"
+date: "January 3, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+library(spdep)
+library(rgdal)
+library(spgrass6)
+library(tripack)
+library(foreign)
+library(pgirmess)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 9 Areal Data and Spatial Autocorrelation
+
+## 9.1 Introduction
+
+**Figure 9.1**. (a) Major cities in the eight-county upper New York State study area; (b) locations of 11 inactive hazardous waste sites in the study area
+
+## 9.2 Spatial Neighbors
+
+### 9.2.1 Neighbor Objects
+
+```{r, comment=NA}
+NY8 <- readOGR(".", "NY8_utm18")
+NY_nb <- read.gal("NY_nb.gal", region.id = row.names(as(NY8, "data.frame")))
+summary(NY_nb)
+isTRUE(all.equal(attr(NY_nb, "region.id"), row.names(as(NY8, "data.frame"))))
+plot(NY8, border = "grey60")
+plot(NY_nb, coordinates(NY8), pch = 19, cex = 0.6, add = TRUE)
+```
+
+```{r, comment=NA}
+Syracuse <- NY8[NY8$AREANAME == "Syracuse city", ]
+Sy0_nb <- subset(NY_nb, NY8$AREANAME == "Syracuse city")
+isTRUE(all.equal(attr(Sy0_nb, "region.id"), row.names(as(Syracuse, "data.frame"))))
+summary(Sy0_nb)
+```
+
+**Figure 9.2**. Census tract contiguities, New York eight-county census tracts 
+
+### 9.2.2 Creating Contiguity Neighbors
+
+```{r, comment=NA}
+class(Syracuse)
+Sy1_nb <- poly2nb(Syracuse)
+isTRUE(all.equal(Sy0_nb, Sy1_nb, check.attributes = FALSE))
+```
+
+**Figure 9.3**. (a) Queen-style census tract contiguities, Syracuse; (b) Rook-style contiguity differences shown as thicker lines
+
+```{r, comment=NA}
+Sy2_nb <- poly2nb(Syracuse, queen = FALSE)
+isTRUE(all.equal(Sy0_nb, Sy2_nb, check.attributes = FALSE))
+```
+
+```{r, comment=NA}
+writeVECT6(Syracuse, "SY0")
+contig <- vect2neigh("SY0")
+Sy3_nb <- sn2listw(contig)$neighbours
+isTRUE(all.equal(Sy3_nb, Sy2_nb, check.attributes = FALSE))
+```
+
+### 9.2.3 Creating Graph-Based Neighbors
+
+**Figure 9.4**. (a) Delauney triangulation neighbors; (b) Sphere of influence neighbors; (c) Gabriel graph neighbors; (d) Relative graph neighbors
+
+```{r, comment=NA}
+coords <- coordinates(Syracuse)
+IDs <- row.names(as(Syracuse, "data.frame"))
+Sy4_nb <- tri2nb(coords, row.names = IDs)
+Sy5_nb <- graph2nb(soi.graph(Sy4_nb, coords), row.names = IDs) 
+Sy6_nb <- graph2nb(gabrielneigh(coords), row.names = IDs)
+Sy7_nb <- graph2nb(relativeneigh(coords), row.names = IDs)
+```
+
+```{r, comment=NA}
+nb_l <- list(Triangulation = Sy4_nb, SOI = Sy5_nb, Gabriel = Sy6_nb, Relative = Sy7_nb)
+sapply(nb_l, function(x) is.symmetric.nb(x, verbose = FALSE, force = TRUE))
+sapply(nb_l, function(x) n.comp.nb(x)$nc)
+```
+
+### 9.2.4 Distance-Based Neighbors
+
+```{r, comment=NA}
+Sy8_nb <- knn2nb(knearneigh(coords, k = 1), row.names = IDs)
+Sy9_nb <- knn2nb(knearneigh(coords, k = 2), row.names = IDs)
+Sy10_nb <- knn2nb(knearneigh(coords, k = 4), row.names = IDs)
+nb_l <- list(k1 = Sy8_nb, k2 = Sy9_nb, k4 = Sy10_nb)
+sapply(nb_l, function(x) is.symmetric.nb(x, verbose = FALSE, force = TRUE))
+sapply(nb_l, function(x) n.comp.nb(x)$nc)
+```
+
+**Figure 9.5**. (a) k = 1 neighbors; (b) k = 2 neighbors; (c) k = 4 neighbors
+
+```{r, comment=NA}
+dsts <- unlist(nbdists(Sy8_nb, coords))
+summary(dsts)
+max_1nn <- max(dsts)
+max_1nn
+Sy11_nb <- dnearneigh(coords, d1 = 0, d2 = 0.75*max_1nn, row.names = IDs)
+Sy12_nb <- dnearneigh(coords, d1 = 0, d2 = 1.00*max_1nn, row.names = IDs)
+Sy13_nb <- dnearneigh(coords, d1 = 0, d2 = 1.50*max_1nn, row.names = IDs)
+nb_l <- list(d1 = Sy11_nb, d2 = Sy12_nb, d3 = Sy13_nb)
+sapply(nb_l, function(x) is.symmetric.nb(x, verbose = FALSE, force = TRUE))
+sapply(nb_l, function(x) n.comp.nb(x)$nc)
+```
+
+**Figure 9.6**. (a) Neighbors within 1,158 m; (b) neighbors within 1,545 m; (c) neighbors within 2,317 m
+
+**Figure 9.7**. Distance-based neighbors: frequencies of numbers of neighbors by census tract
+
+```{r, comment=NA}
+dsts0 <- unlist(nbdists(NY_nb, coordinates(NY8)))
+summary(dsts0)
+```
+
+### 9.2.5 Higher-Order Neighbors
+
+```{r, comment=NA}
+Sy0_nb_lags <- nblag(Sy0_nb, maxlag = 9)
+```
+
+**Table 9.1**. Higher-order contiguities: frequencies of numbers of neighbors by order of neighbor list
+
+### 9.2.6 Grid Neighbors
+
+```{r, comment=NA}
+cell2nb(7, 7, type = "rook", torus = TRUE)
+cell2nb(7, 7, type = "rook", torus = FALSE)
+```
+
+```{r, comment=NA}
+data(meuse.grid)
+coordinates(meuse.grid) <- c("x", "y")
+gridded(meuse.grid) <- TRUE
+dst <- max(slot(slot(meuse.grid, "grid"), "cellsize")) 
+mg_nb <- dnearneigh(coordinates(meuse.grid), 0, dst)
+mg_nb
+table(card(mg_nb))
+```
+
+## 9.3 Spatial Weights
+
+### 9.3.1 Spatial Weights Styles
+
+```{r, comment=NA}
+Sy0_lw_W <- nb2listw(Sy0_nb)
+Sy0_lw_W
+names(Sy0_lw_W)
+names(attributes(Sy0_lw_W))
+```
+
+```{r, comment=NA}
+1/rev(range(card(Sy0_lw_W$neighbors)))
+summary(unlist(Sy0_lw_W$weights))
+summary(sapply(Sy0_lw_W$weights, sum))
+```
+
+```{r, comment=NA}
+Sy0_lw_B <- nb2listw(Sy0_nb, style = "B") 
+summary(unlist(Sy0_lw_B$weights))
+summary(sapply(Sy0_lw_B$weights, sum))
+```
+
+```{r, comment=NA}
+Sy0_lw_C <- nb2listw(Sy0_nb, style = "C")
+length(Sy0_lw_C$neighbours)/length(unlist(Sy0_lw_C$neighbours))
+summary(unlist(Sy0_lw_C$weights))
+summary(sapply(Sy0_lw_C$weights, sum))
+```
+
+```{r, comment=NA}
+Sy0_lw_S <- nb2listw(Sy0_nb, style = "S") 
+summary(unlist(Sy0_lw_S$weights))
+summary(sapply(Sy0_lw_S$weights, sum))
+```
+
+### 9.3.2 General Spatial Weights
+
+```{r, comment=NA}
+dsts <- nbdists(Sy0_nb, coordinates(Syracuse))
+idw <- lapply(dsts, function(x) 1/(x/1000))
+Sy0_lw_idwB <- nb2listw(Sy0_nb, glist = idw, style = "B") 
+summary(unlist(Sy0_lw_idwB$weights))
+summary(sapply(Sy0_lw_idwB$weights, sum))
+```
+
+**Figure 9.8**. Three spatial weights representations for Syracuse
+
+```{r, comment=NA}
+Sy0_lw_D1 <- nb2listw(Sy11_nb, style = "B")
+Sy0_lw_D1 <- nb2listw(Sy11_nb, style = "B", zero.policy = TRUE) 
+print(Sy0_lw_D1, zero.policy = TRUE)
+```
+
+### 9.3.3 Importing, Converting, and Exporting Spatial Neighbors and Weights
+
+```{r, comment=NA}
+Sy14_nb <- read.gal("Sy_GeoDa1.GAL")
+isTRUE(all.equal(Sy0_nb, Sy14_nb, check.attributes = FALSE))
+Sy15_nb <- read.gal("Sy_GeoDa2.GAL")
+isTRUE(all.equal(Sy2_nb, Sy15_nb, check.attributes = FALSE))
+```
+
+```{r, comment=NA}
+Sy16_nb <- read.gwt2nb("Sy_GeoDa4.GWT")
+isTRUE(all.equal(Sy10_nb, Sy16_nb, check.attributes = FALSE))
+```
+
+```{r, comment=NA}
+df <- as.data.frame(listw2mat(Sy0_lw_B))
+write.dta(df, file = "Sy0_lw_B.dta", version = 7)
+```
+
+### 9.3.4 Using Weights to Simulate Spatial Autocorrelation
+
+```{r, comment=NA}
+set.seed(987654)
+n <- length(Sy0_nb)
+uncorr_x <- rnorm(n)
+rho <- 0.5
+autocorr_x <- invIrW(Sy0_lw_W, rho) %*% uncorr_x
+```
+
+**Figure 9.9**. Simulating spatial autocorrelation: spatial lag plots, showing a locally weighted smoother line
+
+### 9.3.5 Manipulating Spatial Weights
+
+## 9.4 Spatial Autocorrelation: Tests
+
+**Table 9.2**. Moran’s I test results for five different data generating processes
+
+```{r, comment=NA}
+moran_u <- moran.test(uncorr_x, listw = Sy0_lw_W)
+moran_a <- moran.test(autocorr_x, listw = Sy0_lw_W)
+moran_a1 <- moran.test(autocorr_x, listw = nb2listw(Sy9_nb, style = "W"))
+```
+
+```{r, comment=NA}
+et <- coords[, 1] - min(coords[, 1])
+trend_x <- uncorr_x + 0.00025 * et
+moran_t <- moran.test(trend_x, listw = Sy0_lw_W)
+moran_t1 <- lm.morantest(lm(trend_x ~ et), listw = Sy0_lw_W)
+```
+
+### 9.4.1 Global Tests
+
+```{r, comment=NA}
+moran.test(NY8$Cases, listw = nb2listw(NY_nb))
+```
+
+```{r, comment=NA}
+lw_B <- nb2listw(NY_nb, style = "B") 
+moran.test(NY8$Cases, listw = lw_B)
+```
+
+```{r, comment=NA}
+moran.test(NY8$Cases, listw = lw_B, randomisation = FALSE)
+```
+
+```{r, comment=NA}
+lm.morantest(lm(Cases ~ 1, NY8), listw = lw_B)
+```
+
+```{r, comment=NA}
+lm.morantest.sad(lm(Cases ~ 1, NY8), listw = lw_B)
+lm.morantest.exact(lm(Cases ~ 1, NY8), listw = lw_B)
+```
+
+```{r, comment=NA}
+set.seed(1234)
+bperm <- moran.mc(NY8$Cases, listw = lw_B, nsim = 999) 
+bperm
+```
+
+```{r, comment=NA}
+r <- sum(NY8$Cases)/sum(NY8$POP8)
+rni <- r*NY8$POP8
+CR <- function(var, mle) rpois(length(var), lambda = mle) 
+MoranI.pboot <- function(var, i, listw, n, S0, ...) {
+    return(moran(x = var, listw = listw, n = n, S0 = S0)$I)
+}
+set.seed(1234)
+boot2 <- boot(NY8$Cases, statistic = MoranI.pboot, R = 999, sim = "parametric", 
+              ran.gen = CR, listw = lw_B, n = length(NY8$Cases), S0 = Szero(lw_B), mle = rni)
+pnorm((boot2$t0 - mean(boot2$t))/sd(boot2$t), lower.tail = FALSE)
+```
+
+```{r, comment=NA}
+rni <- fitted(glm(Cases ~ 1 + offset(log(POP8)), data = NY8, family = "poisson"))
+```
+
+**Figure 9.10**. Histograms of simulated values of Moran’s I under random permutations of the data and parametric samples from constant risk expected values; the observed values of Moran’s I are marked by vertical lines
+
+```{r, comment=NA}
+set.seed(1234)
+EBImoran.mc(n = NY8$Cases, x = NY8$POP8, listw = nb2listw(NY_nb, style = "B"), nsim = 999)
+```
+
+```{r, comment=NA}
+cor8 <- sp.correlogram(neighbours = NY_nb, var = NY8$Cases, order = 8, 
+                       method = "I", style = "C")
+print(cor8, p.adj.method = "holm")
+```
+
+**Figure 9.11**. Correlograms: (left) values of Moran’s I for eight successive lag orders of contiguous neighbors; (right) values of Moran’s I for a sequence of distance band neighbor pairs
+
+```{r, comment=NA}
+corD <- correlog(coordinates(NY8), NY8$Cases, method = "Moran")
+corD
+```
+
+### 9.4.2 Local Tests
+
+```{r, comment=NA}
+moran.plot(NY8$Cases, listw = nb2listw(NY_nb, style = "C"))
+```
+
+**Figure 9.12**. (Left) Moran scatterplot of leukemia incidence; (right) tracts with influence by Moran scatterplot quadrant
+
+```{r, comment=NA}
+lm1 <- localmoran(NY8$Cases, listw = nb2listw(NY_nb, style = "C"))
+lm2 <- as.data.frame(localmoran.sad(lm(Cases ~ 1, NY8), nb = NY_nb, style = "C"))
+lm3 <- as.data.frame(localmoran.exact(lm(Cases ~ 1, NY8), nb = NY_nb, style = "C"))
+```
+
+```{r, comment=NA}
+r <- sum(NY8$Cases)/sum(NY8$POP8)
+rni <- r * NY8$POP8
+lw <- nb2listw(NY_nb, style = "C")
+sdCR <- (NY8$Cases - rni)/sqrt(rni)
+wsdCR <- lag(lw, sdCR)
+I_CR <- sdCR * wsdCR
+```
+
+**Figure 9.13**. Local Moran’s I[i] values calculated directly and using the constant risk hypothesis
+
+```{r, comment=NA}
+set.seed(1234)
+nsim <- 999
+N <- length(rni)
+sims <- matrix(0, ncol = nsim, nrow = N) 
+for (i in 1:nsim) {
+  y <- rpois(N, lambda = rni)
+  sdCRi <- (y - rni)/sqrt(rni)
+  wsdCRi <- lag(lw, sdCRi)
+  sims[ , i] <- sdCRi * wsdCRi
+}
+xrank <- apply(cbind(I_CR, sims), 1, function(x) rank(x)[1]) 
+diff <- nsim - xrank
+diff <- ifelse(diff > 0, diff, 0)
+pval <- punif((diff + 1)/(nsim + 1))
+```
+
+**Figure 9.14**. Probability values for all census tracts, local Moran’s I[i]: normality and randomization assumptions, Saddlepoint approximation, exact values, and constant risk hypothesis
+
+**Figure 9.15**. Probability values for census tracts in and near the city of Binghampton, local Moran’s I[i]: normality assumption, exact values, and constant risk hypothesis

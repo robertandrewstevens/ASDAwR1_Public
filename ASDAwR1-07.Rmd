@@ -1,0 +1,389 @@
+---
+title: "sawr07"
+author: "Robert A. Stevens"
+date: "December 30, 2016"
+output: html_document
+---
+
+```{r, comment=NA}
+library(spatstat)
+library(maptools)
+library(rgdal)
+library(splancs)
+library(adapt)
+library(mgcv)
+library(spatialkernel)
+```
+
+*Applied Spatial Data Analysis with R* by Roger S. Bivand, Edzer J. Pebesma, and Virgilio Gómez-Rubio
+
+# 7 Spatial Point Pattern Analysis
+
+## 7.1 Introduction
+
+## 7.2 Packages for the Analysis of Spatial Point Patterns
+
+**Figure 7.1**. Example of three point patterns rescaled to fit in the unit square. On the left, spatial distribution of the location of cell centers (Ripley, 1977); in the middle, Japanese black pine saplings (Numata, 1961); and on the right, saplings of California redwood trees (Strauss, 1975)
+
+```{r, comment=NA}
+data(japanesepines)
+summary(japanesepines)
+```
+
+```{r, comment=NA}
+spjpines <- as(japanesepines, "SpatialPoints")
+summary(spjpines)
+```
+
+```{r, comment=NA}
+spjpines1 <- elide(spjpines, scale = TRUE, unitsq = TRUE) 
+summary(spjpines1)
+```
+
+```{r, comment=NA}
+pppjap <- as(spjpines1, "ppp")
+summary(pppjap)
+```
+
+```{r, comment=NA}
+spasthma <- readOGR(".", "spasthma")
+spbdry <- readOGR(".", "spbdry")
+spsrc <- readOGR(".", "spsrc")
+sproads <- readOGR(".", "sproads")
+```
+
+**Figure 7.2**. Locations of the residence of asthmatic (cases, filled triangle) and non-asthmatic (controls, cross) in North Derbyshire, 1992 (Diggle and Rowlingson, 1994). The boundary has been taken to contain all points in the data set. The map shows the pollution sources (grey filled square) and the main roads (dashed lines)
+
+## 7.3 Preliminary Analysis of a Point Pattern
+
+### 7.3.1 Complete Spatial Randomness
+
+### 7.3.2 G Function: Distance to the Nearest Event
+
+```{r, comment=NA}
+r <- seq(0, sqrt(2)/6, by = 0.005)
+envjap <- envelope(as(spjpines1, "ppp"), fun = Gest, r = r, nrank = 2, nsim = 99)
+envred <- envelope(as(spred, "ppp"), fun = Gest, r = r, nrank = 2, nsim = 99)
+envcells <- envelope(as(spcells, "ppp"), fun = Gest, r = r, nrank = 2, nsim = 99)
+Gresults <- rbind(envjap, envred, envcells)
+Gresults <- cbind(Gresults, DATASET = rep(c("JAPANESE", "REDWOOD", "CELLS"), each = length(r)))
+```
+
+**Figure 7.3**. Envelopes and observed values of the G function for three point patterns
+
+### 7.3.3 F Function: Distance from a Point to the Nearest Event
+
+```{r, comment=NA}
+Fenvjap <- envelope(as(spjpines1, "ppp"), fun = Fest, r = r, nrank = 2, nsim = 99)
+Fenvred <- envelope(as(spred, "ppp"), fun = Fest, r = r, nrank = 2, nsim = 99)
+Fenvcells <- envelope(as(spcells, "ppp"), fun = Fest, r = r, nrank = 2, nsim = 99)
+Fresults <- rbind(Fenvjap, Fenvred, Fenvcells)
+Fresults <- cbind(Fresults, DATASET = rep(c("JAPANESE", "REDWOOD", "CELLS"), each = length(r)))
+```
+
+**Figure 7.4**. Envelopes and observed values of the F function for three point patterns 
+
+## 7.4 Statistical Analysis of Spatial Point Processes
+
+### 7.4.1 Homogeneous Poisson Processes
+
+### 7.4.2 Inhomogeneous Poisson Processes
+
+### 7.4.3 Estimation of the Intensity
+
+**Figure 7.5**. Example of the contribution of the different points to the estimate of the intensity. Dashed lines represent the kernel around each observation, whilst the solid line is the estimate of the intensity
+
+```{r, comment=NA}
+mserw <- mse2d(as.points(coordinates(spred)), 
+               as.points(list(x = c(0, + 1, 1, 0), y = c(0, 0, 1, 1))), 
+               100, 
+               0.15)
+bw <- mserw$h[which.min(mserw$mse)]
+```
+
+**Figure 7.6** shows different values of the bandwidth and their associated values of the MSE. The value that minimizes it is 0.039, but it should be noted that the curve is very flat around that point, which means that many other values of the bandwidth are plausible. This is a common problem in the analysis of real data sets.
+
+**Figure 7.6**. Values of the mean square error for several values of the bandwidth using the redwood data set. The value that minimizes it is 0.039 but many other values seem plausible, given the flatness of the curve
+
+**Figure 7.7**. Different estimates of the intensity of the redwood data set using a quartic kernel and different values of the bandwidth
+
+```{r, comment=NA}
+poly <- as.points(list(x = c(0, 0, 1, 1), y = c(0, 1, 1, 0)))
+sG <- Sobj_SpatialGrid(spred, maxDim = 100)$SG
+grd <- slot(sG, "grid")
+summary(grd)
+k0 <- spkernel2d(spred, poly, h0 = bw, grd)
+k1 <- spkernel2d(spred, poly, h0 = 0.05, grd)
+k2 <- spkernel2d(spred, poly, h0 = 0.1, grd)
+k3 <- spkernel2d(spred, poly, h0 = 0.15, grade)
+df <- data.frame(k0 = k0, k1 = k1, k2 = k2, k3 = k3) 
+kernels <- SpatialGridDataFrame(grd, data = df)
+summary(kernels)
+```
+
+```{r, comment=NA}
+xy <- list(x = coordinates(kernels)[, 1], y = coordinates(kernels)[, 2])
+k4 <- density(as(spred, "ppp"), 0.5 * bw, dimyx = c(100, 100), xy = xy)
+kernels$k4 <- as(k4, "SpatialGridDataFrame")$v
+k5 <- density(as(spred, "ppp"), 0.5 * 0.05, dimyx = c(100, + 100), xy = xy)
+kernels$k5 <- as(k5, "SpatialGridDataFrame")$v
+k6 <- density(as(spred, "ppp"), 0.5 * 0.1, dimyx = c(100, + 100), xy = xy)
+kernels$k6 <- as(k6, "SpatialGridDataFrame")$v
+k7 <- density(as(spred, "ppp"), 0.5 * 0.15, dimyx = c(100, + 100), xy = xy)
+kernels$k7 <- as(k7, "SpatialGridDataFrame")$v
+summary(kernels)
+```
+
+### 7.4.4 Likelihood of an Inhomogeneous Poisson Process
+
+```{r, comment=NA}
+loglambda <- function(x, alpha, beta) {
+  l <- alpha + sum(beta * c(x, x * x, prod(x)))
+  return(l)
+}
+L <- function(alphabeta, x) {
+  l <- apply(x, 1, loglambda, alpha = alphabeta[1], beta = alphabeta[-1])
+  l <- sum(l)
+  intL <- adapt(2, c(0, 0), c(1, 1), functn = function(x, alpha, beta) {
+    exp(loglambda(x, alpha, beta))
+  }, alpha = alphabeta[1], beta = alphabeta[-1])
+  l <- l - intL$value
+  return(l)
+}
+```
+
+```{r, comment=NA}
+data(lansing)
+x <- as.points(lansing[lansing$marks == "maple", ])
+optbeta <- optim(par = c(log(514), 0, 0, 0, 0, 0), 
+                 fn = L, 
+                 control = list(maxit = 1000, fnscale = -1), 
+                 x = x)
+```
+
+**Figure 7.8**. Location of maple trees from the Lansing data set and their estimated parametric intensity using model (7.2)
+
+```{r, comment=NA}
+lmaple <- lansing[lansing$marks == "maple", ]
+ppm(Q = lmaple, trend = ~x + y + I(x^2) + I(y^2) + I(x * + y))
+```
+
+### 7.4.5 Second-Order Properties
+
+```{r, comment=NA}
+Kenvjap <- envelope(as(spjpines1, "ppp"), fun = Kest, r = r, nrank = 2, nsim = 99)
+Kenvred <- envelope(as(spred, "ppp"), fun = Kest, r = r, nrank = 2, nsim = 99)
+Kenvcells <- envelope(as(spcells, "ppp"), fun = Kest, r = r, nrank = 2, nsim = 99)
+Kresults <- rbind(Kenvjap, Kenvred, Kenvcells)
+Kresults <- cbind(Kresults, DATASET = rep(c("JAPANESE", "REDWOOD", "CELLS"), each = length(r)))
+```
+
+**Figure 7.9**. Envelopes and observed values of Ripley’s K-function for three point patterns
+
+#### Inhomogeneous K-Function
+
+## 7.5 Some Applications in Spatial Epidemiology
+
+### 7.5.1 Case–Control Studies
+
+#### Spatial Variation of the Relative Risk
+
+```{r, comment=NA}
+bwasthma <- 0.125
+```
+
+```{r, comment=NA}
+sG <- Sobj_SpatialGrid(spbdry, maxDim = 50)$SG 
+gt <- slot(sG, "grid")
+```
+
+```{r, comment=NA}
+pbdry <- slot(slot(slot(spbdry, "polygons")[[1]], "Polygons")[[1]], "coords")
+```
+
+```{r, comment=NA}
+cases <- spasthma[spasthma$Asthma == "case", ]
+ncases <- nrow(cases)
+controls <- spasthma[spasthma$Asthma == "control", ] 
+ncontrols <- nrow(controls)
+kcases <- spkernel2d(cases, pbdry, h0 = bwasthma, gt) 
+kcontrols <- spkernel2d(controls, pbdry, h0 = bwasthma, gt)
+```
+
+```{r, comment=NA}
+df0 <- data.frame(kcases = kcases, kcontrols = kcontrols) 
+spkratio0 <- SpatialGridDataFrame(gt, data = df0)
+spkratio <- as(spkratio0, "SpatialPixelsDataFrame")
+spkratio$kratio <- spkratio$kcases/spkratio$kcontrols
+is.na(spkratio$kratio) <- !is.finite(spkratio$kratio)
+spkratio$logratio <- log(spkratio$kratio) - log(ncases/ncontrols)
+```
+
+```{r, comment=NA}
+idxinbdry <- overlay(sG, spbdry)
+idxna <- !is.na(idxinbdry)
+```
+
+```{r, comment=NA}
+niter <- 99
+ratio <- rep(NA, niter)
+pvaluemap <- rep(0, sum(idxna))
+rlabelratio <- matrix(NA, nrow = niter, ncol = sum(idxna))
+```
+
+```{r, comment=NA}
+for(i in 1:niter) {
+  idxrel <- sample(spasthma$Asthma) == "case"
+  casesrel <- spasthma[idxrel, ]
+  controlsrel <- spasthma[!idxrel, ]
+  kcasesrel <- spkernel2d(casesrel, pbdry, h0 = bwasthma, gt)
+  kcontrolsrel <- spkernel2d(controlsrel, pbdry, h0 = bwasthma, gt)
+  kratiorel <- kcasesrel[idxna]/kcontrolsrel[idxna]
+  is.na(kratiorel) <- !is.finite(kratiorel)
+  rlabelratio[i, ] <- kratiorel
+  pvaluemap <- pvaluemap + (spkratio$kratio < kratiorel)
+}
+```
+
+**Figure 7.10**. Kernel ratio of the intensity of cases and controls. The continuous and dashed lines show the surfaces associated with 0.95 and 0.05 p-values, respectively, grey crosses mark the pollution sources. The value of ρˆ0 which marks a flat constant risk is 0.2
+
+```{r, comment=NA}
+idxna2 <- apply(rlabelratio, 2, function(x) all(is.finite(x)))
+rhomean <- apply(rlabelratio[, idxna2], 2, mean) 
+c <- prod(slot(gt, "cellsize"))
+ratiorho <- c*sum((spkratio$kratio[idxna2] - ncases/ncontrols)^2)
+ratio <- c*apply(rlabelratio[, idxna2], 1, function(X, rho0) {
+  sum((X - rho0)^2)
+}, rho0 = ncases/ncontrols)
+pvaluerho <- (sum(ratio > ratiorho) + 1)/(niter + 1)
+```
+
+```{r, comment=NA}
+spkratio$pvaluemap <- (pvaluemap + 1)/(niter + 1)
+imgpvalue <- as.image.SpatialGridDataFrame(spkratio["pvaluemap"]) 
+clpvalue <- contourLines(imgpvalue, levels = c(0, 0.05, 0.95, 1))
+cl <- ContourLines2SLDF(clpvalue)
+```
+
+### 7.5.2 Binary Regression Estimator
+
+```{r, comment=NA}
+bwasthmap <- 0.125
+lambda1 <- spkernel2d(cases, pbdry, h0 = bwasthmap, gt) 
+lambda0 <- spkernel2d(controls, pbdry, h0 = bwasthmap, + gt)
+lambda1 <- lambda1[idxna]
+lambda0 <- lambda0[idxna]
+spkratio$prob <- lambda1/(lambda1 + lambda0)
+is.na(spkratio$prob) <- !is.finite(spkratio$prob)
+```
+
+**Figure 7.11**. Binary regression estimator using the probability of being a case at every grid cell in the study region
+
+### 7.5.3 Binary Regression Using Generalized Additive Models
+
+```{r, comment=NA}
+spasthma$y <- as.integer(!as.integer(spasthma$Asthma) - 1)
+ccasthma <- coordinates(spasthma)
+spasthma$x1 <- ccasthma[, 1]
+spasthma$x2 <- ccasthma[, 2]
+spasthma$dist1 <- sqrt(spasthma$d2source1)
+spasthma$dist2 <- sqrt(spasthma$d2source2)
+spasthma$dist3 <- sqrt(spasthma$d2source3)
+spasthma$droads <- sqrt(spasthma$roaddist2)
+spasthma$smoking <- as.factor(as.numeric(spasthma$Nsmokers > 0))
+spasthma$Genderf <- as.factor(spasthma$Gender)
+spasthma$HayFeverf <- as.factor(spasthma$HayFever)
+gasthma <- gam(y ~ 1 + dist1 + dist2 + dist3 + droads + Genderf + Age + HayFeverf + smoking + s(x1, x2),
+               data = spasthma[spasthma$Gender == 1 | spasthma$Gender == 2, ], family = binomial)
+summary(gasthma)
+```
+
+### 7.5.4 Point Source Pollution
+
+```{r, comment=NA}
+D2_mat <- as.matrix(spasthma$dist2)
+RHO <- ncases/ncontrols
+expsource2 <- tribble(ccflag = spasthma$y, vars = D2_mat, rho = RHO, alphas = 1, betas = 1)
+print(expsource2)
+Hay_mat <- as.matrix(spasthma$HayFever)
+exphay <- tribble(ccflag = spasthma$y, rho = RHO, covars = Hay_mat, + thetas = 1)
+print(exphay)
+```
+
+```{r, comment=NA}
+expsource2hay <- tribble(ccflag = spasthma$y, vars = D2_mat, rho = RHO, 
+                         alphas = 1, betas = 1, covars = Hay_mat, thetas = 1)
+```
+
+#### Assessment of General Spatial Clustering
+
+```{r, comment=NA}
+s <- seq(0, 0.15, by = 0.01)
+khcases <- khat(coordinates(cases), pbdry, s)
+khcontrols <- khat(coordinates(controls), pbdry, s)
+khcov <- khvmat(coordinates(cases), coordinates(controls), pbdry, s)
+T0 <- sum(((khcases - khcontrols))/sqrt(diag(khcov)))
+niter <- 99
+T <- rep(NA, niter)
+khcasesrel <- matrix(NA, nrow = length(s), ncol = niter)
+khcontrolsrel <- matrix(NA, nrow = length(s), ncol = niter) 
+for (i in 1:niter) {
+  idxrel <- sample(spasthma$Asthma) == "case"
+  casesrel <- coordinates(spasthma[idxrel, ])
+  controlsrel <- coordinates(spasthma[!idxrel, ])
+  khcasesrel[, i] <- khat(casesrel, pbdry, s)
+  khcontrolsrel[, i] <- khat(controlsrel, pbdry, s)
+  khdiff <- khcasesrel[, i] - khcontrolsrel[, i]
+  T[i] <- sum(khdiff/sqrt(diag(khcov)))
+}
+pvalue <- (sum(T > T0) + 1)/(niter + 1)
+```
+
+**Figure 7.12**. Actual value of D(s) with approximate 95% confidence intervals and 95% envelopes
+
+### 7.5.5 Accounting for Confounding and Covariates
+
+```{r, comment=NA}
+glmasthma <- glm(y ~ HayFeverf, data = spasthma, family = "binomial") 
+prob <- fitted(glmasthma)
+weights <- exp(glmasthma$linear.predictors)
+setkernel("gaussian")
+lambda0 <- lambdahat(coordinates(controls), bwasthma, coordinates(cases), pbdry, FALSE)$lambda
+lambda1 <- weights[spasthma$Asthma == "case"]*lambda0
+ratiocc <- ncases/ncontrols
+kihnocov <- kinhat(coordinates(cases), ratiocc*lambda0, pbdry, s)$k
+kih <- kinhat(coordinates(cases), lambda1, pbdry, s)$k
+```
+
+```{r, comment=NA}
+niter <- 99
+kinhomrelnocov <- matrix(NA, nrow = length(s), ncol = niter)
+kinhomrel <- matrix(NA, nrow = length(s), ncol = niter) 
+for(i in 1:niter) {
+  idxrel <- sample(spasthma$Asthma, prob = prob) == "case"
+  casesrel <- coordinates(spasthma[idxrel, ])
+  controlsrel <- coordinates(spasthma[!idxrel, ])
+  lambda0rel <- lambdahat(controlsrel, bwasthma, casesrel, pbdry, FALSE)$lambda
+  lambda1rel <- weights[idxrel]*lambda0rel
+  kinhomrelnocov[, i] <- kinhat(casesrel, ratiocc*lambda0rel, pbdry, s)$k
+  kinhomrel[, i] <- kinhat(casesrel, lambda1rel, pbdry, s)$k
+}
+kinhsdnocov <- apply(kinhomrelnocov, 1, sd)
+kihmeannocov <- apply(kinhomrelnocov, 1, mean)
+D0nocov <- sum((kihnocov - kihmeannocov)/kinhsdnocov) 
+Dnocov <- apply(kinhomrelnocov, 2, function(X) {
+  sum((X - kihmeannocov)/kinhsdnocov)
+})
+pvaluenocov <- (sum(Dnocov > D0nocov) + 1)/(niter + 1)
+kinhsd <- apply(kinhomrel, 1, sd)
+kihmean <- apply(kinhomrel, 1, mean)
+D0 <- sum((kih - kihmean)/kinhsd)
+D <- apply(kinhomrel, 2, function(X) {
+  sum((X - kihmean)/kinhsd)
+})
+pvalue <- (sum(D > D0) + 1)/(niter + 1)
+```
+
+**Figure 7.13**. Results of the test based on the inhomogeneous K-function for the asthma data set. The intensity has been modulated to account for the effect of suffering from hay fever
+
+## 7.6 Further Methods for the Analysis of Point Patterns
